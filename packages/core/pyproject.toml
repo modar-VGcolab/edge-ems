@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "edge-ems-core"
+version = "0.1.0"
+description = "Orchestrator: device comms, aggregation, InfluxDB writer, setpoint dispatch"
+requires-python = ">=3.10"
+dependencies = [
+  "edge-ems-common",
+  "pymodbus>=3.12,<3.13",
+  "influxdb-client>=1.45",
+  "paho-mqtt>=2",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

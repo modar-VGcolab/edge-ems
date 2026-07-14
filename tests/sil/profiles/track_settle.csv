@@ -1,0 +1,6 @@
+time_s,point,value
+0,active_power_kw,250
+5,active_power_kw,90
+10,active_power_kw,20
+15,active_power_kw,3
+20,active_power_kw,0

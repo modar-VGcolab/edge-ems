@@ -1,0 +1,11 @@
+# Register map for a controllable load (EV charger / heat pump / water heater).
+# Not a SunSpec DER; a small vendor map. active_power_kw >= 0 (consumption).
+# derate_factor_setpoint in p.u. [0,1] (1 = no derate) via scale 0.01.
+# Typhoon signal binding lives in hil/schematic/signal_bridge.py, not here.
+map_version: "1.0"
+asset_class: flexible_load
+device: generic-flexible-load
+points:
+  active_power_kw:        { address: 40003, type: int32,  scale: 0.001, rw: r }   # (>=0)
+  reactive_power_kvar:    { address: 40005, type: int32,  scale: 0.001, rw: r }
+  derate_factor_setpoint: { address: 40010, type: uint16, scale: 0.01,  rw: rw }

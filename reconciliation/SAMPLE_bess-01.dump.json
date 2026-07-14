@@ -1,0 +1,993 @@
+{
+  "schema": "sunspec-device-dump/v1",
+  "generated_at": "2026-06-22T08:16:41+00:00",
+  "source": {
+    "type": "raw-dump",
+    "path": "reconciliation/SAMPLE_bess-01.raw.json"
+  },
+  "base_address": 40001,
+  "suns_marker_ok": true,
+  "register_span": 303,
+  "end_model_address": 40302,
+  "model_chain": [
+    [
+      1,
+      66
+    ],
+    [
+      701,
+      153
+    ],
+    [
+      704,
+      65
+    ],
+    [
+      713,
+      7
+    ]
+  ],
+  "models": [
+    {
+      "index": 0,
+      "id": 1,
+      "base_address": 40003,
+      "header_length": 66,
+      "known": true,
+      "catalog_length": 66,
+      "length_matches_catalog": true,
+      "points": [
+        {
+          "name": "ID",
+          "offset": 0,
+          "address": 40003,
+          "type": "uint16",
+          "value": 1
+        },
+        {
+          "name": "L",
+          "offset": 1,
+          "address": 40004,
+          "type": "uint16",
+          "value": 66
+        },
+        {
+          "name": "Mn",
+          "offset": 2,
+          "address": 40005,
+          "type": "string",
+          "size": 16
+        },
+        {
+          "name": "Md",
+          "offset": 18,
+          "address": 40021,
+          "type": "string",
+          "size": 16
+        },
+        {
+          "name": "Opt",
+          "offset": 34,
+          "address": 40037,
+          "type": "string",
+          "size": 8
+        },
+        {
+          "name": "Vr",
+          "offset": 42,
+          "address": 40045,
+          "type": "string",
+          "size": 8
+        },
+        {
+          "name": "SN",
+          "offset": 50,
+          "address": 40053,
+          "type": "string",
+          "size": 16
+        },
+        {
+          "name": "DA",
+          "offset": 66,
+          "address": 40069,
+          "type": "uint16"
+        },
+        {
+          "name": "Pad",
+          "offset": 67,
+          "address": 40070,
+          "type": "pad",
+          "size": 1
+        }
+      ],
+      "scale_factors": {}
+    },
+    {
+      "index": 1,
+      "id": 701,
+      "base_address": 40071,
+      "header_length": 153,
+      "known": true,
+      "catalog_length": 153,
+      "length_matches_catalog": true,
+      "points": [
+        {
+          "name": "ID",
+          "offset": 0,
+          "address": 40071,
+          "type": "uint16",
+          "value": 701
+        },
+        {
+          "name": "L",
+          "offset": 1,
+          "address": 40072,
+          "type": "uint16",
+          "value": 153
+        },
+        {
+          "name": "ACType",
+          "offset": 2,
+          "address": 40073,
+          "type": "enum16"
+        },
+        {
+          "name": "St",
+          "offset": 3,
+          "address": 40074,
+          "type": "enum16"
+        },
+        {
+          "name": "InvSt",
+          "offset": 4,
+          "address": 40075,
+          "type": "enum16"
+        },
+        {
+          "name": "ConnSt",
+          "offset": 5,
+          "address": 40076,
+          "type": "enum16"
+        },
+        {
+          "name": "Alrm",
+          "offset": 6,
+          "address": 40077,
+          "type": "bitfield32"
+        },
+        {
+          "name": "DERMode",
+          "offset": 8,
+          "address": 40079,
+          "type": "bitfield32"
+        },
+        {
+          "name": "W",
+          "offset": 10,
+          "address": 40081,
+          "type": "int16"
+        },
+        {
+          "name": "VA",
+          "offset": 11,
+          "address": 40082,
+          "type": "int16"
+        },
+        {
+          "name": "Var",
+          "offset": 12,
+          "address": 40083,
+          "type": "int16"
+        },
+        {
+          "name": "PF",
+          "offset": 13,
+          "address": 40084,
+          "type": "int16"
+        },
+        {
+          "name": "A",
+          "offset": 14,
+          "address": 40085,
+          "type": "int16"
+        },
+        {
+          "name": "LLV",
+          "offset": 15,
+          "address": 40086,
+          "type": "uint16"
+        },
+        {
+          "name": "LNV",
+          "offset": 16,
+          "address": 40087,
+          "type": "uint16"
+        },
+        {
+          "name": "Hz",
+          "offset": 17,
+          "address": 40088,
+          "type": "uint32"
+        },
+        {
+          "name": "TotWhInj",
+          "offset": 19,
+          "address": 40090,
+          "type": "uint64"
+        },
+        {
+          "name": "TotWhAbs",
+          "offset": 23,
+          "address": 40094,
+          "type": "uint64"
+        },
+        {
+          "name": "TotVarhInj",
+          "offset": 27,
+          "address": 40098,
+          "type": "uint64"
+        },
+        {
+          "name": "TotVarhAbs",
+          "offset": 31,
+          "address": 40102,
+          "type": "uint64"
+        },
+        {
+          "name": "TmpAmb",
+          "offset": 35,
+          "address": 40106,
+          "type": "int16"
+        },
+        {
+          "name": "TmpCab",
+          "offset": 36,
+          "address": 40107,
+          "type": "int16"
+        },
+        {
+          "name": "TmpSnk",
+          "offset": 37,
+          "address": 40108,
+          "type": "int16"
+        },
+        {
+          "name": "TmpTrns",
+          "offset": 38,
+          "address": 40109,
+          "type": "int16"
+        },
+        {
+          "name": "TmpSw",
+          "offset": 39,
+          "address": 40110,
+          "type": "int16"
+        },
+        {
+          "name": "TmpOt",
+          "offset": 40,
+          "address": 40111,
+          "type": "int16"
+        },
+        {
+          "name": "WL1",
+          "offset": 41,
+          "address": 40112,
+          "type": "int16"
+        },
+        {
+          "name": "VAL1",
+          "offset": 42,
+          "address": 40113,
+          "type": "int16"
+        },
+        {
+          "name": "VarL1",
+          "offset": 43,
+          "address": 40114,
+          "type": "int16"
+        },
+        {
+          "name": "PFL1",
+          "offset": 44,
+          "address": 40115,
+          "type": "int16"
+        },
+        {
+          "name": "AL1",
+          "offset": 45,
+          "address": 40116,
+          "type": "int16"
+        },
+        {
+          "name": "VL1L2",
+          "offset": 46,
+          "address": 40117,
+          "type": "uint16"
+        },
+        {
+          "name": "VL1",
+          "offset": 47,
+          "address": 40118,
+          "type": "uint16"
+        },
+        {
+          "name": "TotWhInjL1",
+          "offset": 48,
+          "address": 40119,
+          "type": "uint64"
+        },
+        {
+          "name": "TotWhAbsL1",
+          "offset": 52,
+          "address": 40123,
+          "type": "uint64"
+        },
+        {
+          "name": "TotVarhInjL1",
+          "offset": 56,
+          "address": 40127,
+          "type": "uint64"
+        },
+        {
+          "name": "TotVarhAbsL1",
+          "offset": 60,
+          "address": 40131,
+          "type": "uint64"
+        },
+        {
+          "name": "WL2",
+          "offset": 64,
+          "address": 40135,
+          "type": "int16"
+        },
+        {
+          "name": "VAL2",
+          "offset": 65,
+          "address": 40136,
+          "type": "int16"
+        },
+        {
+          "name": "VarL2",
+          "offset": 66,
+          "address": 40137,
+          "type": "int16"
+        },
+        {
+          "name": "PFL2",
+          "offset": 67,
+          "address": 40138,
+          "type": "int16"
+        },
+        {
+          "name": "AL2",
+          "offset": 68,
+          "address": 40139,
+          "type": "int16"
+        },
+        {
+          "name": "VL2L3",
+          "offset": 69,
+          "address": 40140,
+          "type": "uint16"
+        },
+        {
+          "name": "VL2",
+          "offset": 70,
+          "address": 40141,
+          "type": "uint16"
+        },
+        {
+          "name": "TotWhInjL2",
+          "offset": 71,
+          "address": 40142,
+          "type": "uint64"
+        },
+        {
+          "name": "TotWhAbsL2",
+          "offset": 75,
+          "address": 40146,
+          "type": "uint64"
+        },
+        {
+          "name": "TotVarhInjL2",
+          "offset": 79,
+          "address": 40150,
+          "type": "uint64"
+        },
+        {
+          "name": "TotVarhAbsL2",
+          "offset": 83,
+          "address": 40154,
+          "type": "uint64"
+        },
+        {
+          "name": "WL3",
+          "offset": 87,
+          "address": 40158,
+          "type": "int16"
+        },
+        {
+          "name": "VAL3",
+          "offset": 88,
+          "address": 40159,
+          "type": "int16"
+        },
+        {
+          "name": "VarL3",
+          "offset": 89,
+          "address": 40160,
+          "type": "int16"
+        },
+        {
+          "name": "PFL3",
+          "offset": 90,
+          "address": 40161,
+          "type": "int16"
+        },
+        {
+          "name": "AL3",
+          "offset": 91,
+          "address": 40162,
+          "type": "int16"
+        },
+        {
+          "name": "VL3L1",
+          "offset": 92,
+          "address": 40163,
+          "type": "uint16"
+        },
+        {
+          "name": "VL3",
+          "offset": 93,
+          "address": 40164,
+          "type": "uint16"
+        },
+        {
+          "name": "TotWhInjL3",
+          "offset": 94,
+          "address": 40165,
+          "type": "uint64"
+        },
+        {
+          "name": "TotWhAbsL3",
+          "offset": 98,
+          "address": 40169,
+          "type": "uint64"
+        },
+        {
+          "name": "TotVarhInjL3",
+          "offset": 102,
+          "address": 40173,
+          "type": "uint64"
+        },
+        {
+          "name": "TotVarhAbsL3",
+          "offset": 106,
+          "address": 40177,
+          "type": "uint64"
+        },
+        {
+          "name": "ThrotPct",
+          "offset": 110,
+          "address": 40181,
+          "type": "uint16"
+        },
+        {
+          "name": "ThrotSrc",
+          "offset": 111,
+          "address": 40182,
+          "type": "bitfield32"
+        },
+        {
+          "name": "A_SF",
+          "offset": 113,
+          "address": 40184,
+          "type": "sunssf",
+          "value": -1
+        },
+        {
+          "name": "V_SF",
+          "offset": 114,
+          "address": 40185,
+          "type": "sunssf",
+          "value": -1
+        },
+        {
+          "name": "Hz_SF",
+          "offset": 115,
+          "address": 40186,
+          "type": "sunssf",
+          "value": -2
+        },
+        {
+          "name": "W_SF",
+          "offset": 116,
+          "address": 40187,
+          "type": "sunssf",
+          "value": 2
+        },
+        {
+          "name": "PF_SF",
+          "offset": 117,
+          "address": 40188,
+          "type": "sunssf",
+          "value": -3
+        },
+        {
+          "name": "VA_SF",
+          "offset": 118,
+          "address": 40189,
+          "type": "sunssf",
+          "value": 2
+        },
+        {
+          "name": "Var_SF",
+          "offset": 119,
+          "address": 40190,
+          "type": "sunssf",
+          "value": 2
+        },
+        {
+          "name": "TotWh_SF",
+          "offset": 120,
+          "address": 40191,
+          "type": "sunssf",
+          "value": 0
+        },
+        {
+          "name": "TotVarh_SF",
+          "offset": 121,
+          "address": 40192,
+          "type": "sunssf",
+          "value": 0
+        },
+        {
+          "name": "Tmp_SF",
+          "offset": 122,
+          "address": 40193,
+          "type": "sunssf",
+          "value": -1
+        },
+        {
+          "name": "MnAlrmInfo",
+          "offset": 123,
+          "address": 40194,
+          "type": "string",
+          "size": 32
+        }
+      ],
+      "scale_factors": {
+        "A_SF": -1,
+        "V_SF": -1,
+        "Hz_SF": -2,
+        "W_SF": 2,
+        "PF_SF": -3,
+        "VA_SF": 2,
+        "Var_SF": 2,
+        "TotWh_SF": 0,
+        "TotVarh_SF": 0,
+        "Tmp_SF": -1
+      }
+    },
+    {
+      "index": 2,
+      "id": 704,
+      "base_address": 40226,
+      "header_length": 65,
+      "known": true,
+      "catalog_length": 65,
+      "length_matches_catalog": true,
+      "points": [
+        {
+          "name": "ID",
+          "offset": 0,
+          "address": 40226,
+          "type": "uint16",
+          "value": 704
+        },
+        {
+          "name": "L",
+          "offset": 1,
+          "address": 40227,
+          "type": "uint16",
+          "value": 65
+        },
+        {
+          "name": "PFWInjEna",
+          "offset": 2,
+          "address": 40228,
+          "type": "enum16"
+        },
+        {
+          "name": "PFWInjEnaRvrt",
+          "offset": 3,
+          "address": 40229,
+          "type": "enum16"
+        },
+        {
+          "name": "PFWInjRvrtTms",
+          "offset": 4,
+          "address": 40230,
+          "type": "uint32"
+        },
+        {
+          "name": "PFWInjRvrtRem",
+          "offset": 6,
+          "address": 40232,
+          "type": "uint32"
+        },
+        {
+          "name": "PFWAbsEna",
+          "offset": 8,
+          "address": 40234,
+          "type": "enum16"
+        },
+        {
+          "name": "PFWAbsEnaRvrt",
+          "offset": 9,
+          "address": 40235,
+          "type": "enum16"
+        },
+        {
+          "name": "PFWAbsRvrtTms",
+          "offset": 10,
+          "address": 40236,
+          "type": "uint32"
+        },
+        {
+          "name": "PFWAbsRvrtRem",
+          "offset": 12,
+          "address": 40238,
+          "type": "uint32"
+        },
+        {
+          "name": "WMaxLimPctEna",
+          "offset": 14,
+          "address": 40240,
+          "type": "enum16"
+        },
+        {
+          "name": "WMaxLimPct",
+          "offset": 15,
+          "address": 40241,
+          "type": "uint16"
+        },
+        {
+          "name": "WMaxLimPctRvrt",
+          "offset": 16,
+          "address": 40242,
+          "type": "uint16"
+        },
+        {
+          "name": "WMaxLimPctEnaRvrt",
+          "offset": 17,
+          "address": 40243,
+          "type": "enum16"
+        },
+        {
+          "name": "WMaxLimPctRvrtTms",
+          "offset": 18,
+          "address": 40244,
+          "type": "uint32"
+        },
+        {
+          "name": "WMaxLimPctRvrtRem",
+          "offset": 20,
+          "address": 40246,
+          "type": "uint32"
+        },
+        {
+          "name": "WSetEna",
+          "offset": 22,
+          "address": 40248,
+          "type": "enum16"
+        },
+        {
+          "name": "WSetMod",
+          "offset": 23,
+          "address": 40249,
+          "type": "enum16"
+        },
+        {
+          "name": "WSet",
+          "offset": 24,
+          "address": 40250,
+          "type": "int32"
+        },
+        {
+          "name": "WSetRvrt",
+          "offset": 26,
+          "address": 40252,
+          "type": "int32"
+        },
+        {
+          "name": "WSetPct",
+          "offset": 28,
+          "address": 40254,
+          "type": "int16"
+        },
+        {
+          "name": "WSetPctRvrt",
+          "offset": 29,
+          "address": 40255,
+          "type": "int16"
+        },
+        {
+          "name": "WSetEnaRvrt",
+          "offset": 30,
+          "address": 40256,
+          "type": "enum16"
+        },
+        {
+          "name": "WSetRvrtTms",
+          "offset": 31,
+          "address": 40257,
+          "type": "uint32"
+        },
+        {
+          "name": "WSetRvrtRem",
+          "offset": 33,
+          "address": 40259,
+          "type": "uint32"
+        },
+        {
+          "name": "VarSetEna",
+          "offset": 35,
+          "address": 40261,
+          "type": "enum16"
+        },
+        {
+          "name": "VarSetMod",
+          "offset": 36,
+          "address": 40262,
+          "type": "enum16"
+        },
+        {
+          "name": "VarSetPri",
+          "offset": 37,
+          "address": 40263,
+          "type": "enum16"
+        },
+        {
+          "name": "VarSet",
+          "offset": 38,
+          "address": 40264,
+          "type": "int32"
+        },
+        {
+          "name": "VarSetRvrt",
+          "offset": 40,
+          "address": 40266,
+          "type": "int32"
+        },
+        {
+          "name": "VarSetPct",
+          "offset": 42,
+          "address": 40268,
+          "type": "int16"
+        },
+        {
+          "name": "VarSetPctRvrt",
+          "offset": 43,
+          "address": 40269,
+          "type": "int16"
+        },
+        {
+          "name": "VarSetEnaRvrt",
+          "offset": 44,
+          "address": 40270,
+          "type": "enum16"
+        },
+        {
+          "name": "VarSetRvrtTms",
+          "offset": 45,
+          "address": 40271,
+          "type": "uint32"
+        },
+        {
+          "name": "VarSetRvrtRem",
+          "offset": 47,
+          "address": 40273,
+          "type": "uint32"
+        },
+        {
+          "name": "WRmp",
+          "offset": 49,
+          "address": 40275,
+          "type": "uint16"
+        },
+        {
+          "name": "WRmpRef",
+          "offset": 50,
+          "address": 40276,
+          "type": "enum16"
+        },
+        {
+          "name": "VarRmp",
+          "offset": 51,
+          "address": 40277,
+          "type": "uint16"
+        },
+        {
+          "name": "AntiIslEna",
+          "offset": 52,
+          "address": 40278,
+          "type": "enum16"
+        },
+        {
+          "name": "PF_SF",
+          "offset": 53,
+          "address": 40279,
+          "type": "sunssf",
+          "value": -3
+        },
+        {
+          "name": "WMaxLimPct_SF",
+          "offset": 54,
+          "address": 40280,
+          "type": "sunssf",
+          "value": 0
+        },
+        {
+          "name": "WSet_SF",
+          "offset": 55,
+          "address": 40281,
+          "type": "sunssf",
+          "value": 0
+        },
+        {
+          "name": "WSetPct_SF",
+          "offset": 56,
+          "address": 40282,
+          "type": "sunssf",
+          "value": 0
+        },
+        {
+          "name": "VarSet_SF",
+          "offset": 57,
+          "address": 40283,
+          "type": "sunssf",
+          "value": 0
+        },
+        {
+          "name": "VarSetPct_SF",
+          "offset": 58,
+          "address": 40284,
+          "type": "sunssf",
+          "value": 0
+        },
+        {
+          "name": "PFWInj.PF",
+          "offset": 59,
+          "address": 40285,
+          "type": "uint16"
+        },
+        {
+          "name": "PFWInj.Ext",
+          "offset": 60,
+          "address": 40286,
+          "type": "enum16"
+        },
+        {
+          "name": "PFWInjRvrt.PF",
+          "offset": 61,
+          "address": 40287,
+          "type": "uint16"
+        },
+        {
+          "name": "PFWInjRvrt.Ext",
+          "offset": 62,
+          "address": 40288,
+          "type": "enum16"
+        },
+        {
+          "name": "PFWAbs.PF",
+          "offset": 63,
+          "address": 40289,
+          "type": "uint16"
+        },
+        {
+          "name": "PFWAbs.Ext",
+          "offset": 64,
+          "address": 40290,
+          "type": "enum16"
+        },
+        {
+          "name": "PFWAbsRvrt.PF",
+          "offset": 65,
+          "address": 40291,
+          "type": "uint16"
+        },
+        {
+          "name": "PFWAbsRvrt.Ext",
+          "offset": 66,
+          "address": 40292,
+          "type": "enum16"
+        }
+      ],
+      "scale_factors": {
+        "PF_SF": -3,
+        "WMaxLimPct_SF": 0,
+        "WSet_SF": 0,
+        "WSetPct_SF": 0,
+        "VarSet_SF": 0,
+        "VarSetPct_SF": 0
+      }
+    },
+    {
+      "index": 3,
+      "id": 713,
+      "base_address": 40293,
+      "header_length": 7,
+      "known": true,
+      "catalog_length": 7,
+      "length_matches_catalog": true,
+      "points": [
+        {
+          "name": "ID",
+          "offset": 0,
+          "address": 40293,
+          "type": "uint16",
+          "value": 713
+        },
+        {
+          "name": "L",
+          "offset": 1,
+          "address": 40294,
+          "type": "uint16",
+          "value": 7
+        },
+        {
+          "name": "WHRtg",
+          "offset": 2,
+          "address": 40295,
+          "type": "uint16"
+        },
+        {
+          "name": "WHAvail",
+          "offset": 3,
+          "address": 40296,
+          "type": "uint16"
+        },
+        {
+          "name": "SoC",
+          "offset": 4,
+          "address": 40297,
+          "type": "uint16"
+        },
+        {
+          "name": "SoH",
+          "offset": 5,
+          "address": 40298,
+          "type": "uint16"
+        },
+        {
+          "name": "Sta",
+          "offset": 6,
+          "address": 40299,
+          "type": "enum16"
+        },
+        {
+          "name": "WH_SF",
+          "offset": 7,
+          "address": 40300,
+          "type": "sunssf",
+          "value": 0
+        },
+        {
+          "name": "Pct_SF",
+          "offset": 8,
+          "address": 40301,
+          "type": "sunssf",
+          "value": -1
+        }
+      ],
+      "scale_factors": {
+        "WH_SF": 0,
+        "Pct_SF": -1
+      }
+    }
+  ],
+  "notes": []
+}

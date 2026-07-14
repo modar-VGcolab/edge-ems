@@ -1,0 +1,83 @@
+# Rig (CHIL) asset configuration -- core runs in a CONTAINER and reaches the
+# host-side signal_bridge over host.docker.internal. The bridge binds its Modbus
+# servers to 0.0.0.0:<port> on the rig host; containers connect to those same
+# ports via host.docker.internal. load-02 is a passive meter-class fixed load
+# (control law never reads the meter class); for the bridge to actually serve it,
+# enable the meter-01 lines in hil/schematic/signal_bridge.py (MAPS + SIGNALS).
+#
+# register_map paths are relative to the container WORKDIR /app (maps baked into
+# the image at /app/maps).
+
+data_model_version: "0.1"
+
+site:
+  id: vgcolab-01
+  name: "VGCOLAB-01"
+  location: [00.000000, 00.000000]
+
+assets:
+  - id: pcc-01
+    class: pcc
+    name: PCC monitor
+    nominal: { voltage_v: 230, frequency_hz: 50 }
+    limits: { max_current_a: 100, max_supply_power_kva: 1000, max_feed_power_kva: 300 }
+    comm:
+      protocol: modbus_tcp
+      host: host.docker.internal
+      port: 5020
+      unit_id: 1
+      register_map: maps/grid_meter_v1.yaml
+
+  - id: bess-01
+    class: battery
+    name: Battery
+    flexibility:
+      control: power_setpoint
+      limits:
+        max_charge_kw: 500
+        max_discharge_kw: 500
+        min_soc_pct: 5
+        max_soc_pct: 95
+        min_warning_soc_pct: 20
+        max_warning_soc_pct: 90
+    nominal: { capacity_kwh: 215 }
+    comm:
+      protocol: modbus_tcp
+      host: host.docker.internal
+      port: 5021
+      unit_id: 1
+      register_map: maps/custom_bess_v1.yaml
+
+  - id: pv-01
+    class: pv
+    name: PV plant
+    flexibility:
+      control: derate
+      limits: { min_derate_factor: 0.2 }
+    nominal: { max_active_power_kw: 500 }
+    limits: { max_power_kva: 501 }
+    comm:
+      protocol: modbus_tcp
+      host: host.docker.internal
+      port: 5022
+      unit_id: 1
+      register_map: maps/custom_pv_inverter_v1.yaml
+
+  - id: load-01
+    class: flexible_load
+    name: Flexible load
+    flexibility:
+      control: derate
+      limits: { min_derate_factor: 0.3 }
+    nominal: { max_active_power_kw: 500 }
+    comm:
+      protocol: modbus_tcp
+      host: host.docker.internal
+      port: 5023
+      unit_id: 1
+      register_map: maps/flexible_load_v1.yaml
+
+  # load-02 (passive meter, port 5024) disabled for the rig session: the bridge
+  # does not serve 5024, and core's connect-retry loop on it stalls startup.
+  # Re-enable only after enabling the meter-01 lines in signal_bridge.py.
+  # - 

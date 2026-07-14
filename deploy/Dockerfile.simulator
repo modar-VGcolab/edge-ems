@@ -1,0 +1,9 @@
+FROM python:3.13-slim
+WORKDIR /app
+COPY packages/common packages/common
+COPY packages/simulator packages/simulator
+COPY data_model.yaml ./
+COPY maps/ ./maps/
+COPY tests/sil/profiles/ profiles/
+RUN pip install --no-cache-dir -e packages/common -e packages/simulator
+ENTRYPOINT ["python", "-m", "simulator.main"]

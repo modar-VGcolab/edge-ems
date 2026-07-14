@@ -1,0 +1,13 @@
+# Development environment: pip install -r requirements-dev.txt
+-e packages/common
+-e packages/simulator
+-e packages/core
+-e packages/controller
+httpx2>=0.27            # fastapi TestClient (contract tests) needs httpx
+requests>=2.31         # SIL orchestrator drives the controller HTTP API (tests/sil/orchestrate.py)
+pytest>=8
+pytest-asyncio>=0.24
+ruff>=0.6
+pyyaml>=6
+pydantic>=2.8
+pymodbus>=3.12,<3.13

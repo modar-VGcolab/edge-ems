@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "edge-ems-simulator"
+version = "0.1.0"
+description = "pymodbus device simulator driven by register map files"
+requires-python = ">=3.10"
+dependencies = ["edge-ems-common", "pymodbus>=3.12,<3.13"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

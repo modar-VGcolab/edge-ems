@@ -1,0 +1,86 @@
+# SIL (software-in-the-loop) site configuration.
+# Identical to asset_config.example.yaml EXCEPT the comm.host values point at the
+# pymodbus simulator containers on the Docker network (see deploy/docker-compose.yml,
+# 'sil' profile) instead of real device IPs. Each simulator serves exactly one
+# asset's register map on port 502.
+# Loaded by core/controller via ASSET_CONFIG_PATH in the compose 'sil' profile.
+
+data_model_version: "0.1"
+
+site:
+  id: vgcolab-01
+  name: "VGCOLAB-01"
+  location: [00.000000, 00.000000]
+
+assets:
+  - id: pcc-01
+    class: pcc
+    name: PCC monitor
+    nominal: { voltage_v: 230, frequency_hz: 50 }
+    limits: { max_current_a: 100, max_supply_power_kva: 1000, max_feed_power_kva: 999 }
+    comm:
+      protocol: modbus_tcp
+      host: sim-grid
+      port: 502
+      unit_id: 1
+      register_map: maps/grid_meter_v1.yaml
+
+  - id: bess-01
+    class: battery
+    name: Battery
+    flexibility:
+      control: power_setpoint
+      limits:
+        max_charge_kw: 1000
+        max_discharge_kw: 1000
+        min_soc_pct: 5
+        max_soc_pct: 95
+        min_warning_soc_pct: 20
+        max_warning_soc_pct: 90
+    nominal: { capacity_kwh: 215 }
+    comm:
+      protocol: modbus_tcp
+      host: sim-bess
+      port: 502
+      unit_id: 1
+      register_map: maps/custom_bess_v1.yaml
+
+  - id: pv-01
+    class: pv
+    name: PV plant
+    flexibility:
+      control: derate
+      limits: { min_derate_factor: 0.0 }
+    nominal: { max_active_power_kw: 500 }
+    limits: { max_power_kva: 600 }
+    comm:
+      protocol: modbus_tcp
+      host: sim-pv
+      port: 502
+      unit_id: 1
+      register_map: maps/custom_pv_inverter_v1.yaml
+
+  - id: fload-01
+    class: flexible_load
+    name: Flexible load
+    flexibility:
+      control: derate
+      limits: { min_derate_factor: 0.2 }
+    nominal: { max_active_power_kw: 700 }
+    comm:
+      protocol: modbus_tcp
+      host: sim-load
+      port: 502
+      unit_id: 1
+      register_map: maps/flexible_load_v1.yaml
+
+  - id: meter-01
+    class: meter
+    name: Fixed load meter
+    limits: { max_power_kw: 100 }
+    comm:
+      protocol: modbus_tcp
+      host: sim-meter
+      port: 502
+      unit_id: 1
+      register_map: maps/meter_v1.yaml

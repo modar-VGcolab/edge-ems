@@ -1,0 +1,69 @@
+# Overlay for the rig closed loop: core + controller run as CONTAINERS, talking
+# to the host-side signal_bridge (Typhoon) over host.docker.internal, with
+# InfluxDB + MQTT on the compose network. The five sim-* containers are NOT used
+# here -- the host bridge is the plant.
+#
+# Run from the repo root (the bridge runs separately on the host in .venv-rig):
+#
+#   docker compose --env-file configs/.env \
+#     -f deploy/docker-compose.yml -f deploy/docker-compose.rig.yml \
+#     --profile services up -d --build
+#
+# This brings up influxdb, mosquitto, core, controller (the `services` profile
+# excludes the sim-* devices). Host configs are mounted read-only so editing a
+# config + `up -d` re-applies it without a rebuild.
+
+services:
+  core:
+    environment:
+      ASSET_CONFIG_PATH: /app/configs/asset_config.docker.yaml
+      EMS_CONFIG_PATH: /app/configs/edge_ems_config.docker.yaml
+      DATA_MODEL_PATH: /app/data_model.yaml
+    volumes:
+      - ../configs:/app/configs:ro          # host configs -> container (rig configs included)
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # reach the host-side bridge (Linux engines)
+
+  controller:
+    environment:
+      CONFIG_SOURCE: file
+      ASSET_CONFIG_PATH: /app/configs/asset_config.docker.yaml
+      EMS_CONFIG_PATH: /app/configs/edge_ems_config.docker.yaml
+    volumes:
+      - ../configs:/app/configs:ro
+
+  # --- external-EMS takeover gateway (HIL Scenario 1) -----------------------
+  # Opt-in: only started with `--profile ext-ems`, so the normal A-E runs (which
+  # use only the `services` profile) never load it and it never overrides their
+  # setpoints. An external EMS emulator publishes random P* over MQTT; the
+  # gateway follows it, takes over to self-consumption on a watchdog timeout, and
+  # releases on reconnect. Set TIME_SCALE=60 for a ~25 s run, or 1 for real timing.
+  ext-ems:
+    profiles: ["ext-ems"]
+    build:
+      context: ./ext-ems
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: [../configs/.env]
+    environment:
+      SITE_ID: ${SITE_ID:-vgcolab-01}
+      MQTT_BROKER: mosquitto
+      MQTT_PORT: "1883"
+      CONTROLLER_URL: http://controller:5000
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_ORG: ${INFLUX_ORG:-edge}
+      INFLUX_BUCKET: ${INFLUX_BUCKET:-edge_ems}
+      # INFLUX_TOKEN comes from env_file (configs/.env).
+      TIME_SCALE: ${TIME_SCALE:-60}
+      EXT_PUBLISH_INTERVAL_S: ${EXT_PUBLISH_INTERVAL_S:-300}
+      EXT_WATCHDOG_TIMEOUT_S: ${EXT_WATCHDOG_TIMEOUT_S:-360}
+      EXT_OUTAGE_AT_S: ${EXT_OUTAGE_AT_S:-600}
+      EXT_RECONNECT_AT_S: ${EXT_RECONNECT_AT_S:-1200}
+      EXT_P_MIN_KW: ${EXT_P_MIN_KW:--300}
+      EXT_P_MAX_KW: ${EXT_P_MAX_KW:-400}
+      STATUS_PORT: "5010"
+    ports: ["5010:5010"]
+    depends_on:
+      influxdb: { condition: service_healthy }
+      mosquitto: { condition: service_started }
+      controller: { condition: service_started }

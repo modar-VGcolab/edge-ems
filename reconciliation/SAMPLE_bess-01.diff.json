@@ -1,0 +1,144 @@
+{
+  "map": "custom_bess_v1.yaml",
+  "device_source": {
+    "type": "raw-dump",
+    "path": "reconciliation/SAMPLE_bess-01.raw.json"
+  },
+  "chain": {
+    "expected": [
+      [
+        1,
+        66
+      ],
+      [
+        701,
+        153
+      ],
+      [
+        704,
+        65
+      ],
+      [
+        713,
+        7
+      ]
+    ],
+    "device": [
+      [
+        1,
+        66
+      ],
+      [
+        701,
+        153
+      ],
+      [
+        704,
+        65
+      ],
+      [
+        713,
+        7
+      ]
+    ]
+  },
+  "model_issues": [],
+  "scale_factor_issues": [],
+  "point_issues": [],
+  "canonical": [
+    {
+      "point": "active_power_kw",
+      "address": 40081,
+      "map_type": "int16",
+      "status": "ok",
+      "model": 701,
+      "model_point": "W",
+      "sf_name": "W_SF",
+      "map_sf": 2,
+      "device_sf": 2
+    },
+    {
+      "point": "reactive_power_kvar",
+      "address": 40083,
+      "map_type": "int16",
+      "status": "ok",
+      "model": 701,
+      "model_point": "Var",
+      "sf_name": "Var_SF",
+      "map_sf": 2,
+      "device_sf": 2
+    },
+    {
+      "point": "active_power_setpoint_enable",
+      "address": 40248,
+      "map_type": "enum16",
+      "status": "ok",
+      "model": 704,
+      "model_point": "WSetEna"
+    },
+    {
+      "point": "active_power_setpoint_kw",
+      "address": 40250,
+      "map_type": "int32",
+      "status": "ok",
+      "model": 704,
+      "model_point": "WSet",
+      "sf_name": "WSet_SF",
+      "map_sf": 0,
+      "device_sf": 0
+    },
+    {
+      "point": "reactive_power_setpoint_enable",
+      "address": 40261,
+      "map_type": "enum16",
+      "status": "ok",
+      "model": 704,
+      "model_point": "VarSetEna"
+    },
+    {
+      "point": "reactive_power_setpoint_kvar",
+      "address": 40264,
+      "map_type": "int32",
+      "status": "ok",
+      "model": 704,
+      "model_point": "VarSet",
+      "sf_name": "VarSet_SF",
+      "map_sf": 0,
+      "device_sf": 0
+    },
+    {
+      "point": "soc_pct",
+      "address": 40297,
+      "map_type": "uint16",
+      "status": "ok",
+      "model": 713,
+      "model_point": "SoC",
+      "sf_name": "Pct_SF",
+      "map_sf": -1,
+      "device_sf": -1
+    },
+    {
+      "point": "available_charge_power_kw",
+      "address": 40304,
+      "map_type": "int16",
+      "status": "manual",
+      "note": "vendor/non-walkable point -- confirm against the device by hand"
+    },
+    {
+      "point": "available_discharge_power_kw",
+      "address": 40305,
+      "map_type": "int16",
+      "status": "manual",
+      "note": "vendor/non-walkable point -- confirm against the device by hand"
+    }
+  ],
+  "discrepancies": [],
+  "ok": true,
+  "summary": {
+    "model_issues": 0,
+    "scale_factor_issues": 0,
+    "point_issues": 0,
+    "canonical_mismatch": 0,
+    "canonical_manual": 2
+  }
+}

@@ -1,0 +1,115 @@
+name: edge-ems
+
+services:
+  influxdb:
+    image: influxdb:2.7
+    restart: unless-stopped
+    ports: ["8086:8086"]
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: edge-ems-local
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG:-edge}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET:-edge_ems}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_TOKEN:-change-me}
+      DOCKER_INFLUXDB_INIT_RETENTION: 30d
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports: ["1883:1883"]
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+
+  core:
+    profiles: ["services", "sil"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.core
+    restart: unless-stopped
+    env_file: [../configs/.env]
+    environment:
+      # SIL wiring: hosts point at the sim-* containers; EMS endpoints already
+      # use the influxdb/mosquitto service names in the example config.
+      # ADR-0001: Core is the config authority. Per-site config lives on the
+      # core-config volume (seeded from image defaults on first run); the data
+      # model stays baked (versioned artifact).
+      CONFIG_DIR: /data/config
+      ASSET_CONFIG_PATH: ${ASSET_CONFIG_PATH:-/data/config/asset_config.sil.yaml}
+      EMS_CONFIG_PATH: ${EMS_CONFIG_PATH:-/data/config/edge_ems_config.sil.yaml}
+      # Config API is internal-only (NOT published below); loop-state handshake.
+      CORE_CONFIG_PORT: ${CORE_CONFIG_PORT:-5100}
+      CONTROLLER_URL: http://controller:5000
+    volumes:
+      - core-config:/data/config
+    depends_on:
+      influxdb: { condition: service_healthy }
+      mosquitto: { condition: service_started }
+
+  controller:
+    profiles: ["services", "sil"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.controller
+    restart: unless-stopped
+    ports: ["5000:5000"]
+    env_file: [../configs/.env]
+    environment:
+      # ADR-0001: default file mode keeps today's behavior. Set CONFIG_SOURCE=core
+      # to consume config from Core (Phase 3) with a last-known-good cache.
+      CONFIG_SOURCE: ${CONFIG_SOURCE:-file}
+      CORE_CONFIG_URL: http://core:5100
+      CONFIG_CACHE_DIR: /app/configs/.cache
+      ASSET_CONFIG_PATH: ${ASSET_CONFIG_PATH:-configs/asset_config.sil.yaml}
+      EMS_CONFIG_PATH: ${EMS_CONFIG_PATH:-configs/edge_ems_config.sil.yaml}
+    depends_on:
+      influxdb: { condition: service_healthy }
+      mosquitto: { condition: service_started }
+      core: { condition: service_started }
+
+  # --- SIL device simulators (profile: sil) ---------------------------------
+  # Each simulator serves a Modbus TCP server built from the same register map
+  # core.py reads (parity by construction). asset_config comm.host points here.
+  # Each sim's profile is parametrized so the SIL orchestrator can recreate a
+  # single sim with a scenario-specific stimulus (SIM_*_PROFILE env) without
+  # disturbing the others. Defaults preserve the original steady profiles.
+  sim-grid:
+    profiles: ["sil"]
+    build: { context: .., dockerfile: deploy/Dockerfile.simulator }
+    command: ["--map", "maps/grid_meter_v1.yaml", "--port", "502",
+              "--profile", "profiles/${SIM_GRID_PROFILE:-steady_load.csv}", "--speed", "1"]
+
+  sim-bess:
+    profiles: ["sil"]
+    build: { context: .., dockerfile: deploy/Dockerfile.simulator }
+    command: ["--map", "maps/custom_bess_v1.yaml", "--port", "502",
+              "--profile", "profiles/${SIM_BESS_PROFILE:-drain_battery.csv}", "--speed", "1"]
+
+  sim-pv:
+    profiles: ["sil"]
+    build: { context: .., dockerfile: deploy/Dockerfile.simulator }
+    command: ["--map", "maps/custom_pv_inverter_v1.yaml", "--port", "502",
+              "--profile", "profiles/${SIM_PV_PROFILE:-pv_surplus.csv}", "--speed", "1"]
+
+  sim-load:
+    profiles: ["sil"]
+    build: { context: .., dockerfile: deploy/Dockerfile.simulator }
+    command: ["--map", "maps/flexible_load_v1.yaml", "--port", "502"]
+
+  sim-meter:
+    profiles: ["sil"]
+    build: { context: .., dockerfile: deploy/Dockerfile.simulator }
+    command: ["--map", "maps/meter_v1.yaml", "--port", "502"]
+
+volumes:
+  influxdb-data:
+  mosquitto-data:
+  core-config:        # ADR-0001: persistent per-site config (Core is authority)

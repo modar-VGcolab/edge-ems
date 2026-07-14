@@ -1,0 +1,13 @@
+# Canonical binding for bess-01: data_model point -> SunSpec register.
+# value = raw * 10^(SF@sf_address) * unit_scale  (live scale factor).
+device: bess-01
+points:
+  soc_pct: {address: 40297, type: uint16, rw: r, unit_scale: 1.0, sf_address: 40301}
+  active_power_kw: {address: 40081, type: int16, rw: r, unit_scale: 0.001, sf_address: 40187}
+  reactive_power_kvar: {address: 40083, type: int16, rw: r, unit_scale: 0.001, sf_address: 40190}
+  active_power_setpoint_kw: {address: 40250, type: int32, rw: rw, unit_scale: 0.001, sf_address: 40281}
+  reactive_power_setpoint_kvar: {address: 40264, type: int32, rw: rw, unit_scale: 0.001, sf_address: 40283}
+  active_power_setpoint_enable: {address: 40248, type: enum16, rw: rw, unit_scale: 1.0}
+  reactive_power_setpoint_enable: {address: 40261, type: enum16, rw: rw, unit_scale: 1.0}
+  available_charge_power_kw: {address: 40304, type: int16, rw: r, unit_scale: 1.0, sf_value: -1}
+  available_discharge_power_kw: {address: 40305, type: int16, rw: r, unit_scale: 1.0, sf_value: -1}

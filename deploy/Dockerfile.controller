@@ -1,0 +1,8 @@
+FROM python:3.13-slim
+WORKDIR /app
+COPY packages/common packages/common
+COPY packages/controller packages/controller
+COPY data_model.yaml ./
+COPY configs/ ./configs/
+RUN pip install --no-cache-dir -e packages/common -e packages/controller
+CMD ["python", "-m", "controller.main"]

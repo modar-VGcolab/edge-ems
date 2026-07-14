@@ -1,0 +1,5 @@
+paho-mqtt>=1.6,<2.0
+httpx>=0.27
+influxdb-client>=1.40
+fastapi>=0.110
+uvicorn>=0.29

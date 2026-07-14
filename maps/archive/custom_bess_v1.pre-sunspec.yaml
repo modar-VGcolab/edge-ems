@@ -1,0 +1,16 @@
+# ARCHIVED — the original compact BESS map, superseded on the SunSpec-700 move.
+# The live map (maps/custom_bess_v1.yaml) is now a generated walkable SunSpec
+# image (Common(1)+701+704+713). Kept here for history/reference only; not loaded.
+map_version: "2.1"
+asset_class: battery
+device: custom-bess-inverter
+points:
+  soc_pct:                      { address: 40001, type: uint16, scale: 0.1, rw: r }   # 713.SoC
+  active_power_kw:              { address: 40002, type: int16,  scale: 0.1, rw: r }   # 701.W (+charge/-discharge)
+  reactive_power_kvar:          { address: 40003, type: int16,  scale: 0.1, rw: r }   # 701.Var
+  available_charge_power_kw:    { address: 40004, type: int16,  scale: 0.1, rw: r }
+  available_discharge_power_kw: { address: 40005, type: int16,  scale: 0.1, rw: r }
+  active_power_setpoint_kw:     { address: 40101, type: int16,  scale: 0.1, rw: rw }  # 704.WSet
+  reactive_power_setpoint_kvar: { address: 40102, type: int16,  scale: 0.1, rw: rw }  # 704.VarSet
+  active_power_setpoint_enable:   { address: 40103, type: uint16, scale: 1, rw: rw }  # 704.WSetEna
+  reactive_power_setpoint_enable: { address: 40104, type: uint16, scale: 1, rw: rw }  # 704.VarSetEna

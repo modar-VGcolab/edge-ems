@@ -1,0 +1,6 @@
+time_s,point,value
+0,soc_pct,22
+0,active_power_kw,-400
+10,soc_pct,12
+20,soc_pct,6
+30,soc_pct,5

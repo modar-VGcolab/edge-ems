@@ -1,0 +1,114 @@
+# data_model.yaml — canonical data model (ontology) v0.1
+# Single source of truth for every named quantity crossing an interface:
+# asset_config.yaml, InfluxDB schema, MQTT payloads, HTTP API responses.
+# Naming reference: SunSpec DER information model (700-series) where a
+# counterpart exists.
+#
+# Conventions (locked, apply everywhere):
+#   power:      active kW · reactive kVAr · apparent kVA
+#   sign:       positive = consumed by the asset; negative = generated/injected
+#               (battery discharge, PV output, grid feed-in are NEGATIVE)
+#   voltage:    Vrms phase-neutral · frequency: Hz · soc: %
+#   per-unit:   internal to the controller only (base = pcc max power);
+#               every value crossing an interface is SI
+#   timestamps: UTC, written by core.py with every InfluxDB record
+#
+# InfluxDB mapping: measurement = asset class · tags = site_id, asset_id
+#                   fields = point names below
+# MQTT mapping:     topic = site/{site_id}/setpoints/{asset_class}
+#                   payload keys = direction:output points below
+
+data_model_version: "0.1"
+
+asset_classes:
+
+  pcc:
+    description: Point of common coupling, single asset per site, not aggregated
+    points:
+      voltage_v:                 { unit: V,    type: float, direction: input,  sunspec: 701.LNV }
+      frequency_hz:              { unit: Hz,   type: float, direction: input,  sunspec: 701.Hz }
+      current_a:                 { unit: A,    type: float, direction: input,  sunspec: 701.A }
+      active_power_kw:           { unit: kW,   type: float, direction: input,  sunspec: 701.W,    sign: "+import / -export" }
+      reactive_power_kvar:       { unit: kVAr, type: float, direction: input,  sunspec: 701.Var,  sign: "+inductive / -capacitive" }
+      active_power_setpoint_kw:  { unit: kW,   type: float, direction: input,  note: "target tracked by controller, set via HTTP API" }
+      reactive_power_setpoint_kvar: { unit: kVAr, type: float, direction: input }
+      switch_state:              { unit: bool, type: int,   direction: output, values: { 1: closed, 0: open } }
+    limits_schema:
+      max_current_a:        { unit: A }
+      max_supply_power_kva: { unit: kVA, note: grid supply limit }
+      max_feed_power_kva:   { unit: kVA, note: grid feed-in limit }
+    nominal_schema:
+      voltage_v:    { unit: V }
+      frequency_hz: { unit: Hz }
+
+  battery:
+    description: Controllable storage; at least one required per site
+    flexibility: { control: power_setpoint }
+    points:
+      soc_pct:                   { unit: "%",  type: float, direction: input,  sunspec: 713.SoC }
+      active_power_kw:           { unit: kW,   type: float, direction: input,  sunspec: 701.W,    sign: "+charge / -discharge" }
+      reactive_power_kvar:       { unit: kVAr, type: float, direction: input }
+      available_charge_power_kw:    { unit: kW, type: float, direction: input, note: dynamic limit reported by BMS }
+      available_discharge_power_kw: { unit: kW, type: float, direction: input, note: dynamic limit reported by BMS }
+      converter_alarm:              { unit: bool, type: int, direction: input, note: "1 = converter fault/trip/alarm (still reporting telemetry); any asserted alarm forces the battery unavailable -> SAFE. No single SunSpec register: summarised by the device adapter / bridge from the converter St/Alarm. Absent/COMM_FAIL = no alarm info (does not force SAFE)." }
+      active_power_setpoint_kw:  { unit: kW,   type: float, direction: output, sunspec: 704.WSet, sign: "+charge / -discharge" }
+      reactive_power_setpoint_kvar: { unit: kVAr, type: float, direction: output, sunspec: 704.VarSet }
+      active_power_setpoint_enable:    { unit: bool, type: bool, direction: output, sunspec: 704.WSetEna,   note: "enable W setpoint; set once at connect, out of band" }
+      reactive_power_setpoint_enable:  { unit: bool, type: bool, direction: output, sunspec: 704.VarSetEna, note: "enable Var setpoint; set once at connect, out of band" }
+    limits_schema:
+      max_charge_kw:        { unit: kW }
+      max_discharge_kw:     { unit: kW }
+      min_soc_pct:          { unit: "%" }
+      max_soc_pct:          { unit: "%" }
+      min_warning_soc_pct:  { unit: "%", note: derating trigger; 0 disables }
+      max_warning_soc_pct:  { unit: "%", note: derating trigger; 0 disables }
+    nominal_schema:
+      capacity_kwh: { unit: kWh }
+
+  pv:
+    description: PV generation; curtailable via derate factor
+    flexibility: { control: derate }
+    points:
+      active_power_kw:           { unit: kW,   type: float, direction: input, sign: "always <= 0 (generation)" }
+      reactive_power_kvar:       { unit: kVAr, type: float, direction: input }
+      derate_factor_setpoint:    { unit: pu,   type: float, direction: output, range: [0.0, 1.0], sunspec: 704.WMaxLimPct, note: "1 = no curtailment" }
+    limits_schema:
+      max_power_kva:        { unit: kVA }
+      min_derate_factor:    { unit: pu, range: [0.0, 1.0] }
+    nominal_schema:
+      max_active_power_kw:  { unit: kW, note: peak at STC }
+
+  flexible_load:
+    description: Controllable load (EV charger, heat pump, water heater...)
+    flexibility: { control: derate }
+    points:
+      active_power_kw:           { unit: kW,   type: float, direction: input, sign: "always >= 0 (consumption)" }
+      reactive_power_kvar:       { unit: kVAr, type: float, direction: input }
+      derate_factor_setpoint:    { unit: pu,   type: float, direction: output, range: [0.0, 1.0], note: "1 = no derate" }
+    limits_schema:
+      min_derate_factor:    { unit: pu, range: [0.0, 1.0] }
+    nominal_schema:
+      max_active_power_kw:  { unit: kW }
+
+  meter:
+    description: Passive measurement point (smart meter); no control
+    flexibility: { control: none }
+    points:
+      voltage_v:                 { unit: V,    type: float, direction: input }
+      frequency_hz:              { unit: Hz,   type: float, direction: input }
+      current_a:                 { unit: A,    type: float, direction: input }
+      active_power_kw:           { unit: kW,   type: float, direction: input }
+      reactive_power_kvar:       { unit: kVAr, type: float, direction: input }
+    limits_schema:
+      max_power_kw: { unit: kW }
+
+# Aggregation contract (core.py writes these; controller reads them)
+# measurement = "aggregate", tags = site_id, asset_class
+aggregates:
+  battery:        [soc_pct, active_power_kw, reactive_power_kvar, available_charge_power_kw, available_discharge_power_kw, converter_alarm]
+  pv:             [active_power_kw, reactive_power_kvar]
+  flexible_load:  [active_power_kw, reactive_power_kvar]
+  # pcc is a single asset — never aggregated
+
+# Quality flags carried with every InfluxDB record
+quality: { GOOD: fresh within timeout, STALE: older than timeout_period, COMM_FAIL: adapter reported failure }

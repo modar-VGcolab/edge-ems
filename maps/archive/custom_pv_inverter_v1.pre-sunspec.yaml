@@ -1,0 +1,13 @@
+# Register map for the PV inverter — SunSpec 700-series (701 meas, 704 limit).
+# SCALE NOTE: raw x 10^(SF) in base units, W->kW = 0.001, SF assumed 0.
+# active_power_kw is <= 0 (generation). derate_factor_setpoint is the curtailment
+# command in p.u. [0,1] (1 = no curtailment); mapped to 704.WMaxLimPct percent
+# via scale 0.01 (1.0 pu <-> 100 %). Typhoon signal binding lives in
+# hil/schematic/signal_bridge.py, not here.
+map_version: "1.0"
+asset_class: pv
+device: custom-pv-inverter
+points:
+  active_power_kw:        { address: 40083, type: int32,  scale: 0.001, rw: r }   # 701.W (<=0)
+  reactive_power_kvar:    { address: 40085, type: int32,  scale: 0.001, rw: r }   # 701.Var
+  derate_factor_setpoint: { address: 40225, type: uint16, scale: 0.01,  rw: rw }  # 704.WMaxLimPct

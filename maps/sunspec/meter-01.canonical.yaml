@@ -1,0 +1,9 @@
+# Canonical binding for meter-01: data_model point -> SunSpec register.
+# value = raw * 10^(SF@sf_address) * unit_scale  (live scale factor).
+device: meter-01
+points:
+  voltage_v: {address: 40019, type: uint16, rw: r, unit_scale: 1.0, sf_address: 40117}
+  frequency_hz: {address: 40020, type: uint32, rw: r, unit_scale: 1.0, sf_address: 40118}
+  current_a: {address: 40017, type: int16, rw: r, unit_scale: 1.0, sf_address: 40116}
+  active_power_kw: {address: 40013, type: int16, rw: r, unit_scale: 0.001, sf_address: 40119}
+  reactive_power_kvar: {address: 40015, type: int16, rw: r, unit_scale: 0.001, sf_address: 40122}

@@ -1,0 +1,7 @@
+# Canonical binding for fload-01: data_model point -> SunSpec register.
+# value = raw * 10^(SF@sf_address) * unit_scale  (live scale factor).
+device: fload-01
+points:
+  active_power_kw: {address: 40081, type: int16, rw: r, unit_scale: 0.001, sf_address: 40187}
+  reactive_power_kvar: {address: 40083, type: int16, rw: r, unit_scale: 0.001, sf_address: 40190}
+  derate_factor_setpoint: {address: 40241, type: uint16, rw: rw, unit_scale: 0.01, sf_address: 40280}

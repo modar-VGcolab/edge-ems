@@ -1,0 +1,5 @@
+time_s,point,value
+0,frequency_hz,50.0
+5,frequency_hz,50.4
+10,frequency_hz,49.6
+15,frequency_hz,50.0

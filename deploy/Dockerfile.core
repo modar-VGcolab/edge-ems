@@ -1,0 +1,13 @@
+FROM python:3.13-slim
+WORKDIR /app
+COPY packages/common packages/common
+COPY packages/core packages/core
+COPY data_model.yaml ./
+COPY maps/ ./maps/
+COPY configs/ ./configs/
+COPY deploy/core-entrypoint.sh /app/core-entrypoint.sh
+RUN pip install --no-cache-dir -e packages/common -e packages/core \
+    && chmod +x /app/core-entrypoint.sh
+# ADR-0001: seed + persist per-site config on a volume (CONFIG_DIR), then run.
+ENTRYPOINT ["/app/core-entrypoint.sh"]
+CMD ["python", "-m", "core.main"]

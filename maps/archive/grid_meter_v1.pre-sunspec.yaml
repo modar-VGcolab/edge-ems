@@ -1,0 +1,23 @@
+# Register map for the PCC monitor — SunSpec 700-series (IEEE 1547-2018), model 701.
+# Point names are canonical (data_model.yaml); addresses are absolute SunSpec
+# holding registers (base 40001; 'SunS' @40001-2, Common(1) @40003, 701 @40071).
+#
+# SCALE NOTE: SunSpec values are raw x 10^(SF register) in base units (W, Var, V,
+# A, Hz). 'scale' below assumes SF registers = 0 and folds in the canonical-unit
+# conversion (W->kW = 0.001). If a device's SF registers are non-zero, multiply
+# 'scale' by 10^SF. The PCC setpoint (active_power_setpoint_kw) is set via the
+# HTTP API, not read from the meter, so it is intentionally absent here.
+#
+# NOTE: the Typhoon model signal each point binds to (VAn_RMS, Freq, ...) is NOT
+# stored here — that mapping lives in hil/schematic/signal_bridge.py (SIGNALS) and
+# docs/HIL_REGISTERS_AND_SCADA.md, so the register layout stays decoupled from the
+# rig. (RegisterDef forbids extra keys for exactly this reason.)
+map_version: "1.0"
+asset_class: pcc
+device: generic-sunspec-meter
+points:
+  voltage_v:           { address: 40072, type: uint16, scale: 0.1,   rw: r }   # 701.LNV phase-neutral (matches data_model + VAn_RMS); confirm offset vs firmware
+  frequency_hz:        { address: 40073, type: uint16, scale: 0.01,  rw: r }   # 701.Hz
+  current_a:           { address: 40074, type: uint16, scale: 0.1,   rw: r }   # 701.A
+  active_power_kw:     { address: 40080, type: int32,  scale: 0.001, rw: r }   # 701.W (+import/-export)
+  reactive_power_kvar: { address: 40082, type: int32,  scale: 0.001, rw: r }   # 701.Var

@@ -1,0 +1,24 @@
+walked 4 models: [(1, 66), (701, 153), (704, 65), (713, 7)]
+  model    1 @ 40003  L=66
+  model  701 @ 40071  L=153   SF: A_SF=-1  V_SF=-1  Hz_SF=-2  W_SF=+2  PF_SF=-3  VA_SF=+2  Var_SF=+2  TotWh_SF=+0  TotVarh_SF=+0  Tmp_SF=-1
+  model  704 @ 40226  L=65   SF: PF_SF=-3  WMaxLimPct_SF=+0  WSet_SF=+0  WSetPct_SF=+0  VarSet_SF=+0  VarSetPct_SF=+0
+  model  713 @ 40293  L=7   SF: WH_SF=+0  Pct_SF=-1
+dump written -> reconciliation/SAMPLE_bess-01.dump.json
+
+SunSpec reconciliation diff -- custom_bess_v1.yaml
+  device source: raw-dump
+  chain  map:    [(1, 66), (701, 153), (704, 65), (713, 7)]
+  chain  device: [(1, 66), (701, 153), (704, 65), (713, 7)]
+  result: MATCH
+  (0 model, 0 scale-factor, 0 point issues; 0 canonical mismatch, 2 need manual confirmation)
+
+  canonical bindings:
+    [ ok ] active_power_kw                  @40081 int16     SF W_SF map=2 device=2
+    [ ok ] reactive_power_kvar              @40083 int16     SF Var_SF map=2 device=2
+    [ ok ] active_power_setpoint_enable     @40248 enum16  
+    [ ok ] active_power_setpoint_kw         @40250 int32     SF WSet_SF map=0 device=0
+    [ ok ] reactive_power_setpoint_enable   @40261 enum16  
+    [ ok ] reactive_power_setpoint_kvar     @40264 int32     SF VarSet_SF map=0 device=0
+    [ ok ] soc_pct                          @40297 uint16    SF Pct_SF map=-1 device=-1
+    [ ?? ] available_charge_power_kw        @40304 int16     [vendor/non-walkable point -- confirm against the device by hand]
+    [ ?? ] available_discharge_power_kw     @40305 int16     [vendor/non-walkable point -- confirm against the device by hand]
