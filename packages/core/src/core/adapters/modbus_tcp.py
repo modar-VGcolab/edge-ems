@@ -59,6 +59,10 @@ class ModbusTcpAdapter:
         timeout: float = 2.0,
         max_gap: int = 4,
         max_backoff: float = 30.0,
+        enable_points: tuple[str, ...] = (
+            "active_power_setpoint_enable",
+            "reactive_power_setpoint_enable",
+        ),
     ):
         self._host = host
         self._port = port
@@ -72,6 +76,11 @@ class ModbusTcpAdapter:
         self._backoff = 1.0
         self._next_attempt = 0.0
         self._sf_cache: dict[int, int] = {}  # sf_address -> scale factor (static)
+        # SunSpec 704 WSetEna/VarSetEna latches to assert once per connection, so
+        # the device honours the WSet/VarSet values we write each cycle (they are
+        # ignored while their enable is 0). Names absent from a device's map (PV,
+        # load, meters) are simply skipped.
+        self._enable_points = enable_points
 
     # -- lifecycle -----------------------------------------------------------
 
@@ -81,6 +90,30 @@ class ModbusTcpAdapter:
         if not ok:
             raise ConnectionError(f"could not connect to {self._host}:{self._port}")
         self._health.connected = True
+        await self._assert_setpoint_enables()
+
+    async def _assert_setpoint_enables(self) -> None:
+        """Latch the active/reactive setpoint-enable registers (=1) once per
+        connection. SunSpec ignores WSet/VarSet while their enable is 0, so
+        without this the battery silently discards every setpoint we send.
+
+        Best-effort by design: a device whose map lacks these points (PV, load,
+        meters) is skipped, and a write failure is recorded but never fails the
+        connection -- reads/writes stay usable and the next reconnect retries."""
+        for name in self._enable_points:
+            reg = self.rmap.points.get(name)
+            if reg is None or reg.rw == "r":
+                continue
+            try:
+                rr = await self._client.write_registers(
+                    holding_offset(reg.address),
+                    encode(reg, 1.0, sf=self._sf_for(reg)),
+                    device_id=self._unit_id,
+                )
+                if rr.isError():
+                    raise OSError(str(rr))
+            except Exception as exc:  # noqa: BLE001 - enable latch is best-effort
+                self._health.last_error = f"setpoint-enable {name}: {exc}"
 
     async def disconnect(self) -> None:
         if self._client is not None:

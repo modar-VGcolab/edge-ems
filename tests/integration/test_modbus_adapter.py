@@ -106,6 +106,22 @@ def test_write_readonly_point_rejected_locally(live_device, bess_map):
     assert device.get_point("soc_pct") == pytest.approx(57.5)  # untouched
 
 
+def test_setpoint_enables_asserted_on_connect(live_device, bess_map):
+    # connect() alone should latch WSetEna/VarSetEna to 1, so the battery honours
+    # the active/reactive setpoints written on later cycles (they are ignored
+    # while the enable is 0). No explicit write_points call is made here.
+    device, port = live_device
+
+    async def scenario():
+        adapter = ModbusTcpAdapter("127.0.0.1", bess_map, port=port)
+        await adapter.connect()
+        await adapter.disconnect()
+
+    asyncio.run(scenario())
+    assert device.get_point("active_power_setpoint_enable") == pytest.approx(1.0)
+    assert device.get_point("reactive_power_setpoint_enable") == pytest.approx(1.0)
+
+
 def test_dead_device_yields_comm_fail(bess_map):
     port = _free_port()  # nothing listening
 
