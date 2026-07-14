@@ -25,6 +25,7 @@ from common.config_models import AssetConfigFile, EdgeEmsConfigFile
 from common.points import COMM_FAIL, GOOD, PointValue
 
 from controller.droop import DroopController
+from controller.pfc import PfcController
 from controller.edge_controller import (
     BatteryLimits,
     ControlInputs,
@@ -191,10 +192,12 @@ class ControlLoop:
         max_feed_kw: float | None,
         pcc_setpoint_kw: float = 0.0,
         write_control: Callable[[dict[str, float | str], float], None] | None = None,
+        pfc: PfcController | None = None,
     ):
         self.edge = edge
         self.modes = modes
         self.droop = droop
+        self.pfc = pfc
         self.read_snapshot = read_snapshot
         self.publish = publish
         self.pcc_base_kw = pcc_base_kw
@@ -218,7 +221,16 @@ class ControlLoop:
                 corr = self.droop.correction(freq, volt)
                 dp, dq = corr.dp_kw, corr.dq_kvar
             out = self.edge.step(replace(inputs, pcc_setpoint_kw=self.pcc_setpoint_kw + dp), now)
-            battery_sp, reactive_sp = out.battery_setpoint_kw, dq
+            battery_sp = out.battery_setpoint_kw
+            # Reactive priority: Q-V droop (voltage support) wins whenever it is
+            # commanding; the tariff PFC only fills in the reactive when droop's Q
+            # is idle (voltage inside the deadband, or droop disabled). This keeps
+            # grid-voltage safety ahead of the economic PF target.
+            reactive_sp = dq
+            if self.pfc is not None and self.pfc.enabled and abs(dq) < 1e-9:
+                reactive_sp = self.pfc.reactive_setpoint_kvar(
+                    now, inputs.pcc_meas_kw, battery_sp
+                )
             derate, curtail = out.derate_factor, out.curtail_factor
             pcc_error, pi_output, dur = out.pcc_error_kw, out.pi_output_kw, out.loop_duration_ms
 

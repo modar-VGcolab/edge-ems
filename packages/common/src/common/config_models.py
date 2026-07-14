@@ -186,6 +186,60 @@ class DroopConfig(StrictModel):
     q_v_droop: QvDroop
 
 
+_HHMM_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+
+class PfcTarget(StrictModel):
+    """A power-factor goal: a target magnitude in (0, 1] and which side of unity.
+
+    mode: unity -> no reactive command (Q = 0); lagging -> the site presents an
+    inductive PF at the PCC (positive/inductive reactive per data_model.yaml);
+    leading -> capacitive PF (negative reactive). pf_target is ignored when
+    mode == 'unity'.
+    """
+
+    pf_target: float = Field(default=1.0, gt=0.0, le=1.0)
+    mode: Literal["unity", "lagging", "leading"] = "unity"
+
+
+class PfcWindow(PfcTarget):
+    """A tariff time-of-day window mapping to a PF goal. `start`/`end` are local
+    wall-clock 'HH:MM'; a window with start > end wraps past midnight."""
+
+    start: str = Field(pattern=_HHMM_PATTERN)
+    end: str = Field(pattern=_HHMM_PATTERN)
+
+    @field_validator("start", "end")
+    @classmethod
+    def _not_equal_placeholder(cls, v: str) -> str:  # format already enforced by pattern
+        return v
+
+
+class PfcConfig(StrictModel):
+    """Tariff-driven power-factor control at the PCC.
+
+    The active window (by local time) selects a PF goal; the controller converts
+    it to a battery reactive setpoint. `q_sign_convention` (+1/-1) calibrates the
+    battery VarSet direction against the live PCC meter on the rig -- like the
+    other sign flags, it may need flipping once verified. `s_rated_kva`, when set,
+    clamps the reactive command to the battery inverter capability circle
+    sqrt(S^2 - P^2); omit it to disable the clamp.
+    """
+
+    enabled: bool = False
+    q_sign_convention: float = 1.0
+    s_rated_kva: float | None = Field(default=None, gt=0)
+    default: PfcTarget = Field(default_factory=PfcTarget)
+    windows: list[PfcWindow] = Field(default_factory=list)
+
+    @field_validator("q_sign_convention")
+    @classmethod
+    def _sign(cls, v: float) -> float:
+        if v not in (1.0, -1.0):
+            raise ValueError("q_sign_convention must be +1 or -1")
+        return v
+
+
 class AggregationSpec(StrictModel):
     measurements: list[str]
     setpoint_type: str
@@ -210,6 +264,7 @@ class EdgeEmsConfigFile(StrictModel):
     mqtt: MqttConfig
     controller: ControllerSettings
     droop: DroopConfig
+    pfc: PfcConfig = Field(default_factory=PfcConfig)
     asset_aggregation: dict[str, AggregationSpec]
     http_api: HttpApiConfig = Field(default_factory=HttpApiConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)

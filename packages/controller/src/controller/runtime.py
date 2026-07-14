@@ -29,6 +29,7 @@ from controller.control_loop import (
 )
 from controller.data_connector import InfluxAggregateReader
 from controller.droop import DroopController
+from controller.pfc import PfcController
 from controller.edge_controller import EdgeController
 from controller.modes import ModeController
 
@@ -71,6 +72,7 @@ def build_control_loop(cm: ConfigManager, dm: DataModel, *, read_snapshot, publi
     edge = EdgeController(params, battery_limits_from_config(ac), derate_limits_from_config(ac))
     base, max_feed = pcc_params_from_config(ac)
     droop = DroopController(ec.droop, base) if ec.droop.enabled else None
+    pfc = PfcController(ec.pfc) if ec.pfc.enabled else None
     return ControlLoop(
         edge=edge,
         modes=ModeController(hold_max_s=ec.controller.hold_max_s),
@@ -81,6 +83,7 @@ def build_control_loop(cm: ConfigManager, dm: DataModel, *, read_snapshot, publi
         max_feed_kw=max_feed,
         pcc_setpoint_kw=ec.controller.pcc_setpoint_kw,
         write_control=write_control,
+        pfc=pfc,
     )
 
 

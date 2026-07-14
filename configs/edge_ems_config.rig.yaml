@@ -43,6 +43,24 @@ droop:
     dQ_V: [-0.1, -0.05, 0.05, 0.1]
     V: [207, 219, 241, 253]
 
+# Tariff-driven power-factor control at the PCC. When enabled, the active window
+# (local wall-clock) sets a PF goal that the controller turns into a battery
+# reactive setpoint; Q-V droop (above) keeps priority whenever it is commanding.
+# q_sign_convention (+1/-1) calibrates the battery VarSet direction against the
+# live PCC meter -- VERIFY on the rig, may need flipping (like the other sign
+# flags). s_rated_kva clamps reactive to the inverter capability circle. Disabled
+# by default; the windows below are an illustrative peak/off-peak schedule.
+pfc:
+  enabled: false
+  q_sign_convention: 1        # +1 or -1; confirm against PCC reactive sign on rig
+  s_rated_kva: 500            # battery inverter apparent rating for the Q clamp
+  default:
+    pf_target: 1.0            # unity outside every window (no reactive command)
+    mode: unity
+  windows:
+    - {start: "08:00", end: "20:00", pf_target: 0.95, mode: lagging}   # peak: absorb VARs (inductive)
+    - {start: "20:00", end: "08:00", pf_target: 0.98, mode: leading}   # off-peak: supply VARs (capacitive)
+
 asset_aggregation:
   battery:
     measurements: [soc_pct, active_power_kw, reactive_power_kvar,
