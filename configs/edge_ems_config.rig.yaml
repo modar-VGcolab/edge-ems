@@ -26,6 +26,15 @@ controller:
                             # 0.3/0.2 removes the first-swing overshoot (zero
                             # overshoot, ~12-15 s settle) at 1-2 cycles of delay;
                             # see hil/tuning/tune_pi_latency.py. Confirm on the rig.
+  # Performance options (default 0 => behaviour identical to the pure PI above;
+  # enable + confirm on the rig). Kd adds damping so Kp/Ki can be raised without
+  # overshoot despite the comms dead time; deriv_filter_tau (~2-3x update_period)
+  # keeps the derivative from amplifying measurement noise. pv_feedforward_gain
+  # (0..1) cancels PV's direct PCC effect so the loop doesn't chase generation
+  # ramps through the integrator -- start ~0.8 once the PV sign/scale is verified.
+  Kd: 0.0                   # derivative gain (on measurement)
+  deriv_filter_tau: 0.0     # s; low-pass on the derivative (0 = unfiltered)
+  pv_feedforward_gain: 0.0  # [0,1] fraction of PV offset fed forward
   timeout_period: 2.0       # s, staleness threshold (>= update_period)
   hold_max_s: 10.0          # s in HOLD before transitioning to SAFE
   slew_limit_kw_s: 200.0    # battery setpoint slew limit

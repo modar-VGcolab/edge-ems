@@ -42,6 +42,9 @@ class ControlParams:
     ki: float
     update_period: float  # s; the integral uses this as dt
     slew_limit_kw_s: float | None = None  # battery setpoint slew, kW/s; None disables
+    kd: float = 0.0  # derivative gain (on measurement); 0 = pure PI (default, unchanged)
+    deriv_filter_tau: float = 0.0  # s; first-order filter on the derivative; 0 = unfiltered
+    pv_feedforward_gain: float = 0.0  # [0,1] fraction of PV offset fed forward; 0 = off
 
 
 @dataclass(frozen=True)
@@ -87,6 +90,9 @@ class ControlState:
     last_battery_setpoint_kw: float = 0.0
     derate_factor: float = 1.0
     curtail_factor: float = 1.0
+    last_pcc_meas_kw: float = 0.0  # for derivative-on-measurement (kept across SAFE)
+    deriv_filtered_kw: float = 0.0  # filtered derivative term carried between cycles
+    deriv_primed: bool = False  # False until the first measurement seeds the derivative
 
 
 @dataclass(frozen=True)
@@ -152,7 +158,26 @@ def compute(
     # t4 -- error and PI (tentative integration, revisited by anti-windup)
     error = inputs.pcc_setpoint_kw - inputs.pcc_meas_kw
     cand_integral = state.integral + error * dt
-    pi_output = params.kp * error + params.ki * cand_integral
+
+    # Derivative-on-measurement (not error) so a setpoint step causes no kick.
+    # For a constant setpoint de/dt = -d(meas)/dt, so the battery derivative term
+    # is kd*de/dt = -kd*d(meas)/dt, optionally low-pass filtered. The term is only
+    # active once "primed" by a first measurement, so a cold start or a SAFE
+    # re-entry never injects a one-cycle spike. kd = 0 (default) -> pure PI.
+    deriv_filtered = state.deriv_filtered_kw
+    deriv = 0.0
+    if params.kd > 0.0 and dt > 0.0 and state.deriv_primed:
+        raw_deriv = -params.kd * (inputs.pcc_meas_kw - state.last_pcc_meas_kw) / dt
+        alpha = dt / (params.deriv_filter_tau + dt) if params.deriv_filter_tau > 0 else 1.0
+        deriv_filtered = alpha * raw_deriv + (1.0 - alpha) * state.deriv_filtered_kw
+        deriv = deriv_filtered
+
+    # Feedforward: cancel PV's direct effect on the PCC so the loop does not have
+    # to chase generation ramps through the integrator. pv is <= 0 (generation);
+    # holding the PCC needs the battery to charge by -pv, scaled by the gain.
+    feedforward = -params.pv_feedforward_gain * inputs.pv_active_power_kw
+
+    pi_output = params.kp * error + params.ki * cand_integral + deriv + feedforward
 
     # t5 -- signed battery setpoint window: dynamic BMS headroom AND config limits,
     # then SoC hard gates (<=min: no discharge; >=max: no charge).
@@ -175,7 +200,7 @@ def compute(
 
     if integrator_frozen:
         integral = state.integral  # do not accumulate this cycle
-        pi_output = params.kp * error + params.ki * integral
+        pi_output = params.kp * error + params.ki * integral + deriv + feedforward
     else:
         integral = cand_integral
 
@@ -234,6 +259,9 @@ def compute(
         last_battery_setpoint_kw=battery_setpoint,
         derate_factor=derate_factor,
         curtail_factor=curtail_factor,
+        last_pcc_meas_kw=inputs.pcc_meas_kw,
+        deriv_filtered_kw=deriv_filtered,
+        deriv_primed=True,
     )
     return ControlOutput(
         battery_setpoint_kw=battery_setpoint,

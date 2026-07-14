@@ -122,6 +122,9 @@ class ControllerSettings(StrictModel):
     update_period: float = Field(default=1.0, gt=0)
     Kp: float = 0.5
     Ki: float = 0.1
+    Kd: float = Field(default=0.0, ge=0)  # derivative gain (on measurement); 0 = pure PI
+    deriv_filter_tau: float = Field(default=0.0, ge=0)  # s; low-pass on the derivative
+    pv_feedforward_gain: float = Field(default=0.0, ge=0, le=1)  # PV disturbance feedforward
     timeout_period: float = Field(default=2.0, gt=0)
     hold_max_s: float = Field(default=10.0, ge=0)
     slew_limit_kw_s: float | None = Field(default=None, gt=0)

@@ -240,6 +240,9 @@ class ControlLoop:
             derate, curtail = st.derate_factor, st.curtail_factor
             pcc_error = inputs.pcc_setpoint_kw - inputs.pcc_meas_kw
             pi_output, dur = 0.0, 0.0
+            # No compute() this cycle -> the derivative's last measurement goes
+            # stale; unprime so RUN re-entry seeds it afresh (no derivative kick).
+            self.edge.state = replace(st, deriv_primed=False)
 
         else:  # SAFE: ramp battery to 0, release all mitigations, reset integrator
             battery_sp = safe_battery_setpoint(
@@ -254,6 +257,8 @@ class ControlLoop:
                 last_battery_setpoint_kw=battery_sp,
                 derate_factor=1.0,
                 curtail_factor=1.0,
+                deriv_filtered_kw=0.0,
+                deriv_primed=False,
             )
             pcc_error = inputs.pcc_setpoint_kw - inputs.pcc_meas_kw
             pi_output, dur = 0.0, 0.0
@@ -343,5 +348,11 @@ def pcc_params_from_config(ac: AssetConfigFile) -> tuple[float, float | None]:
 def params_from_config(ec: EdgeEmsConfigFile) -> ControlParams:
     c = ec.controller
     return ControlParams(
-        kp=c.Kp, ki=c.Ki, update_period=c.update_period, slew_limit_kw_s=c.slew_limit_kw_s
+        kp=c.Kp,
+        ki=c.Ki,
+        update_period=c.update_period,
+        slew_limit_kw_s=c.slew_limit_kw_s,
+        kd=c.Kd,
+        deriv_filter_tau=c.deriv_filter_tau,
+        pv_feedforward_gain=c.pv_feedforward_gain,
     )
