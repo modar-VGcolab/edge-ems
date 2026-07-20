@@ -19,6 +19,14 @@ from pymodbus.client import AsyncModbusTcpClient
 from core.adapters.base import COMM_FAIL, GOOD, AdapterHealth, PointValue, WriteResult
 
 
+# Modbus caps a single "read holding registers" request at 125 registers (0x7D).
+# A block wider than this is rejected by the device with an exception response,
+# which surfaces as COMM_FAIL on every point in the block -- while the socket
+# itself stays healthy, so it reads like a comms fault rather than an illegal
+# request. Grouping must therefore split on span as well as on gap.
+MAX_READ_REGISTERS = 125
+
+
 @dataclass(frozen=True)
 class ReadBlock:
     start: int  # zero-based holding offset
@@ -27,7 +35,12 @@ class ReadBlock:
 
 
 def plan_reads(rmap: RegisterMap, names: list[str], max_gap: int = 4) -> list[ReadBlock]:
-    """Group requested points into minimal contiguous read requests."""
+    """Group requested points into minimal contiguous read requests.
+
+    Two things end a block: a gap wider than `max_gap` (a further read is cheaper
+    than transferring the padding), and a span that would exceed
+    MAX_READ_REGISTERS (the request would be illegal).
+    """
     regs = sorted(
         ((n, rmap.points[n]) for n in names),
         key=lambda item: holding_offset(item[1].address),
@@ -37,7 +50,9 @@ def plan_reads(rmap: RegisterMap, names: list[str], max_gap: int = 4) -> list[Re
     start = end = 0
     for name, reg in regs:
         off = holding_offset(reg.address)
-        if current and off - end > max_gap:
+        gap_too_wide = bool(current) and off - end > max_gap
+        span_too_wide = bool(current) and (off + reg.width) - start > MAX_READ_REGISTERS
+        if gap_too_wide or span_too_wide:
             blocks.append(ReadBlock(start, end - start, current))
             current = []
         if not current:

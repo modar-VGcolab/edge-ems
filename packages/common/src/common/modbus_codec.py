@@ -22,6 +22,12 @@ HOLDING_BASE = 40001
 _SIGNED = {"int16", "sunssf", "int32"}
 _BITS = {"uint16": 16, "int16": 16, "enum16": 16, "sunssf": 16,
          "uint32": 32, "int32": 32, "bitfield32": 32, "uint64": 64}
+# The register types that decode to a numeric value. A full walkable SunSpec
+# image also carries 'string' (identity: manufacturer, model, serial, version)
+# and 'pad' registers, which are structural rather than telemetry -- callers
+# selecting points to poll should filter on this set.
+NUMERIC_TYPES = frozenset(_BITS) | {"float32"}
+
 _RANGE = {
     "uint16": (0, 0xFFFF), "enum16": (0, 0xFFFF), "sunssf": (-0x8000, 0x7FFF),
     "int16": (-0x8000, 0x7FFF), "uint32": (0, 0xFFFFFFFF), "bitfield32": (0, 0xFFFFFFFF),
@@ -39,7 +45,15 @@ def _words_to_int(typ: str, words: list[int]) -> int:
     raw = 0
     for w in words:  # big-endian word order
         raw = (raw << 16) | (w & 0xFFFF)
-    bits = _BITS[typ]
+    try:
+        bits = _BITS[typ]
+    except KeyError:  # e.g. SunSpec 'string'/'pad' -- present in a walkable image
+        raise ValueError(
+            f"register type '{typ}' is not numeric and cannot be decoded to a value "
+            f"(numeric types: {', '.join(sorted(NUMERIC_TYPES))}). SunSpec identity "
+            f"strings and padding are part of the walkable image, not telemetry -- "
+            f"filter them out before reading."
+        ) from None
     if typ in _SIGNED and raw >= (1 << (bits - 1)):
         raw -= 1 << bits
     return raw

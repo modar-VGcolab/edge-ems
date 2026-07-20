@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 
 from common.data_model import DataModel
+from common.modbus_codec import NUMERIC_TYPES
 from common.register_map import load_register_map
 from core.adapters.modbus_tcp import ModbusTcpAdapter
 
@@ -65,7 +66,13 @@ async def _bench(count: int, cycles: int, base_port: int) -> dict:
         for i in range(count)
     ]
     await asyncio.gather(*(a.connect() for a in adapters))
-    names = [n for n, r in rmap.points.items() if r.rw == "r"]
+    # Every readable *numeric* point: the wire-compatibility proof covers all
+    # telemetry. A full walkable SunSpec image also carries 'string' identity
+    # registers (manufacturer, model, serial) and padding, which are structural
+    # and decode to no value -- core never polls them either.
+    names = [
+        n for n, r in rmap.points.items() if r.rw == "r" and r.type in NUMERIC_TYPES
+    ]
 
     # warm-up
     await asyncio.gather(*(a.read_points(names) for a in adapters))

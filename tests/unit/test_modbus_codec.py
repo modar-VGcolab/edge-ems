@@ -1,5 +1,5 @@
 import pytest
-from common.modbus_codec import decode, encode, holding_offset
+from common.modbus_codec import NUMERIC_TYPES, decode, encode, holding_offset
 from common.register_map import RegisterDef
 
 
@@ -57,3 +57,28 @@ def test_decode_word_count_check():
     reg = _reg(type="int32", scale=1.0)
     with pytest.raises(ValueError):
         decode(reg, [1])
+
+
+# -- non-numeric register types ----------------------------------------------
+#
+# A full walkable SunSpec image carries 'string' identity registers and padding.
+# They are structural, not telemetry: decoding one used to raise a bare
+# KeyError from deep inside _words_to_int, which read as a codec bug rather
+# than "you asked for a point that has no numeric value".
+
+
+def test_string_type_raises_a_legible_error():
+    reg = _reg(type="string", size=8, scale=1.0)
+    with pytest.raises(ValueError, match="not numeric"):
+        decode(reg, [0] * 8)
+
+
+def test_numeric_types_excludes_string_and_pad():
+    assert "string" not in NUMERIC_TYPES
+    assert "pad" not in NUMERIC_TYPES
+
+
+def test_numeric_types_covers_the_decodable_set():
+    for typ in ("uint16", "int16", "enum16", "sunssf", "uint32", "int32",
+                "bitfield32", "uint64", "float32"):
+        assert typ in NUMERIC_TYPES, typ
