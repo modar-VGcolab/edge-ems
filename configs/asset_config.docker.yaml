@@ -36,10 +36,10 @@ assets:
       limits:
         max_charge_kw: 500
         max_discharge_kw: 500
-        min_soc_pct: 5
-        max_soc_pct: 95
+        min_soc_pct: 10
+        max_soc_pct: 90
         min_warning_soc_pct: 20
-        max_warning_soc_pct: 90
+        max_warning_soc_pct: 85
     nominal: { capacity_kwh: 215 }
     comm:
       protocol: modbus_tcp
@@ -53,7 +53,7 @@ assets:
     name: PV plant
     flexibility:
       control: derate
-      limits: { min_derate_factor: 0.2 }
+      limits: { min_derate_factor: 0.0 }
     nominal: { max_active_power_kw: 500 }
     limits: { max_power_kva: 501 }
     comm:

@@ -327,17 +327,17 @@ def test_builders_from_example_config(asset_config_raw, edge_ems_config_raw, dm)
     ec = validate_edge_ems_config(edge_ems_config_raw, dm)
 
     bl = battery_limits_from_config(ac)
-    assert bl.max_charge_kw == 1000.0
-    assert bl.min_soc_pct == 5.0
-    assert bl.max_warning_soc_pct == 90.0
+    assert bl.max_charge_kw == 500.0
+    assert bl.min_soc_pct == 10.0
+    assert bl.max_warning_soc_pct == 85.0
 
     dl = derate_limits_from_config(ac)
     assert dl.pv_min_derate == 0.0
-    assert dl.load_min_derate == 0.2
+    assert dl.load_min_derate == 0.3
 
     base, max_feed = pcc_params_from_config(ac)
     assert base == 1000.0  # PCC max import = 1000 kVA (per-unit base)
-    assert max_feed == 999.0
+    assert max_feed == 300.0
 
     p = params_from_config(ec)
     assert p.kp == 0.5 and p.ki == 0.5 and p.slew_limit_kw_s == 200.0

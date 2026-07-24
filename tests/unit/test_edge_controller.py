@@ -267,11 +267,13 @@ def test_derate_disabled_when_warning_zero():
 # --------------------------------------------- high-SoC PV curtail (ladder t7)
 
 
-def test_curtail_when_exporting_past_feed_limit_and_full():
-    # Integrating regulator (B1 fix): exporting 600 kW vs a 500 kW feed limit is a
-    # 100 kW overshoot. From curtail 0.75 it steps DOWN by
-    # g*feed_error*prev/pv_gen = 0.5*100*0.75/400 = 0.09375 -> 0.65625.
-    # (The pre-fix one-shot law parked above the limit; see the closed-loop tests.)
+def test_curtail_ramped_target_past_feed_limit_and_full():
+    # Ramped target (fixes the ~12s bang-bang oscillation found on the rig):
+    # at soc=92 the warning band (90->95) is 40% traversed, so the target is
+    # tapered from the 500 kW feed limit down to 500*(1-0.4) = 300 kW, not the
+    # raw feed limit itself. Exporting 600 kW is a 300 kW overshoot vs that
+    # target. From curtail 0.75 it steps DOWN by
+    # g*feed_error*prev/pv_gen = 0.5*300*0.75/400 = 0.28125 -> 0.46875.
     out = compute(
         _inputs(pcc=-600.0, soc=92.0, pv_active_power_kw=-400.0, max_feed_kw=500.0),
         _params(),
@@ -279,15 +281,54 @@ def test_curtail_when_exporting_past_feed_limit_and_full():
         DerateLimits(),
         ControlState(curtail_factor=0.75),
     )
-    assert out.curtail_factor == pytest.approx(0.65625)
+    assert out.curtail_factor == pytest.approx(0.46875)
 
 
-def test_no_curtail_below_feed_limit():
+def test_curtail_engages_before_raw_feed_limit_partway_through_band():
+    # Same 400 kW export that used to be "below the feed limit" (500) and get
+    # no curtailment now DOES curtail a little: at soc=92 the ramped target is
+    # only 300 kW (see above), so 400 kW export is a 100 kW overshoot vs that
+    # tighter target, not the raw 500 kW cap. This is the ramp working as
+    # intended -- proactive, partial curtailment before the hard ceiling,
+    # instead of a single on/off snap right at it.
     out = _run(
         inputs=_inputs(pcc=-400.0, soc=92.0, pv_active_power_kw=-400.0, max_feed_kw=500.0),
-        battery=_batt(max_warn=90.0),
+        battery=_batt(max_soc=95.0, max_warn=90.0),
+    )
+    assert out.curtail_factor == pytest.approx(0.875)
+
+
+def test_no_curtail_at_or_below_warning_threshold():
+    # Right at the warning-band entry (soc == max_warning_soc_pct), the ramp
+    # hasn't started yet -- strict ">" (mirrors t6's strict "<" for the
+    # low-SoC band), so no curtailment.
+    out = _run(
+        inputs=_inputs(pcc=-400.0, soc=90.0, pv_active_power_kw=-400.0, max_feed_kw=500.0),
+        battery=_batt(max_soc=95.0, max_warn=90.0),
     )
     assert out.curtail_factor == 1.0
+
+
+def test_curtail_ramps_monotonically_through_warning_band():
+    # The whole point of the ramp: at a FIXED export level, curtailment
+    # tightens progressively as SoC climbs from the warning threshold to the
+    # hard ceiling, instead of staying off then snapping hard at one point.
+    # Single-cycle response at each soc (fresh ControlState) to isolate the
+    # ramp's shape from integrator dynamics.
+    factors = []
+    for soc in (90.0, 91.0, 92.0, 93.0, 94.0, 95.0):
+        out = compute(
+            _inputs(pcc=-490.0, soc=soc, pv_active_power_kw=-490.0, max_feed_kw=500.0),
+            _params(),
+            _batt(max_soc=95.0, max_warn=90.0),
+            DerateLimits(),
+            ControlState(),
+        )
+        factors.append(out.curtail_factor)
+    assert factors == sorted(factors, reverse=True)  # monotonically decreasing
+    assert factors[0] == 1.0  # no curtailment right at the threshold
+    assert factors[-1] == pytest.approx(0.5)  # fully ramped down at the ceiling
+    assert all(f < 1.0 for f in factors[1:])  # every step past it curtails some
 
 
 def test_no_curtail_when_battery_not_full():
@@ -308,6 +349,34 @@ def test_curtail_floored_at_pv_min_derate():
         ControlState(curtail_factor=0.1),
     )
     assert out.curtail_factor == pytest.approx(0.1)
+
+
+def test_curtail_targets_zero_export_when_no_charge_headroom():
+    # Regression: battery saturated full (avail_charge_kw <= 0) with no SoC
+    # warning band configured at all (max_warn=0, disabling the feed-limit
+    # branch) must still curtail PV toward 0 export -- self-consumption is
+    # driven directly by real BMS headroom, not by a configured SoC band.
+    out = compute(
+        _inputs(pcc=-150.0, soc=95.0, charge_hl=0.0, pv_active_power_kw=-400.0),
+        _params(),
+        _batt(max_soc=95.0, max_warn=0.0),  # feed-limit branch disabled
+        DerateLimits(),
+        ControlState(curtail_factor=1.0),
+    )
+    assert out.curtail_factor < 1.0  # curtailing, not stuck exporting freely
+
+
+def test_no_curtail_target_when_headroom_available_even_at_max_soc():
+    # If the BMS still reports headroom (avail_charge_kw > 0), curtailment
+    # stays off even at soc >= max_soc_pct -- the battery absorbs the surplus.
+    out = compute(
+        _inputs(pcc=-150.0, soc=95.0, charge_hl=50.0, pv_active_power_kw=-400.0),
+        _params(),
+        _batt(max_soc=95.0, max_warn=0.0),
+        DerateLimits(),
+        ControlState(curtail_factor=1.0),
+    )
+    assert out.curtail_factor == 1.0
 
 
 # --------------------------------------------------------------- deadband
@@ -358,26 +427,29 @@ def test_thousand_cycles_no_drift_or_nan():
     assert (base_load + batt) == pytest.approx(0.0, abs=0.5)  # converged, stable
 
 
-# ----------------------------------- high-SoC PV curtailment, CLOSED LOOP (B1 fix)
-# Regression for the feed-limit curtailment defect: the old one-shot proportional
-# cut normalised by the (already-curtailed) measured PV, leaving a steady-state
-# offset so export parked ~15% above the limit. The fix is an INTEGRATING
-# regulator normalised by the *available* PV; export must converge exactly onto
-# the feed limit and hold there without hunting.
+# ----------------------------------- self-consumption PV curtailment, CLOSED LOOP
+# Once the battery is full (no charge headroom), curtailment targets 0 export
+# (self-consumption) rather than the site feed limit -- priority order is
+# PV -> BESS -> load-shed, and grid export is the last resort. An INTEGRATING
+# regulator normalised by the *available* PV avoids the steady-state offset a
+# one-shot proportional cut would leave; export must converge exactly onto the
+# target and hold there without hunting.
 
 
-def _curtail_plant_step(ctrl, curtail, *, pv_available, site_load, feed_limit, soc=92.0):
+def _curtail_plant_step(
+    ctrl, curtail, *, pv_available, site_load, feed_limit, soc=92.0, charge_hl=0.0
+):
     """One closed-loop cycle: the plant delivers `curtail * pv_available`, the PCC
     exports that minus the site load, and the controller returns a new curtail
-    factor. Battery is in the high-SoC band with no charge headroom, so export is
-    regulated by PV curtailment alone."""
+    factor. `charge_hl=0.0` (default) models a full battery -- no charge
+    headroom -- so export is regulated by PV curtailment alone, targeting 0."""
     pv_delivered = curtail * pv_available          # >= 0 magnitude
     export_kw = pv_delivered - site_load           # +ve when exporting
     out = ctrl.step(
         _inputs(
             pcc=-export_kw,                        # data model: export is negative
             soc=soc,
-            charge_hl=0.0,                         # battery full -> cannot absorb
+            charge_hl=charge_hl,
             discharge_hl=1000.0,
             pv_active_power_kw=-pv_delivered,      # curtailed PV, <= 0
             max_feed_kw=feed_limit,
@@ -386,7 +458,7 @@ def _curtail_plant_step(ctrl, curtail, *, pv_available, site_load, feed_limit, s
     return out.curtail_factor, export_kw
 
 
-def test_curtailment_closed_loop_holds_export_at_feed_limit():
+def test_curtailment_closed_loop_holds_export_at_zero_when_battery_full():
     feed_limit, pv_available, site_load = 300.0, 600.0, 100.0
     ctrl = EdgeController(_params(kp=0.5, ki=0.5), _batt(max_warn=90.0))
     curtail, export = 1.0, None
@@ -394,8 +466,8 @@ def test_curtailment_closed_loop_holds_export_at_feed_limit():
         curtail, export = _curtail_plant_step(
             ctrl, curtail, pv_available=pv_available, site_load=site_load, feed_limit=feed_limit
         )
-    assert export == pytest.approx(feed_limit, abs=1.0)          # holds AT the limit, not above
-    assert curtail == pytest.approx((feed_limit + site_load) / pv_available, abs=0.02)
+    assert export == pytest.approx(0.0, abs=1.0)                 # holds at 0, not the feed limit
+    assert curtail == pytest.approx(site_load / pv_available, abs=0.02)
 
 
 def test_curtailment_closed_loop_quiescent_at_equilibrium():
@@ -415,19 +487,26 @@ def test_curtailment_closed_loop_quiescent_at_equilibrium():
     assert max(settled) - min(settled) < 0.01                   # no boundary hunting
 
 
-def test_curtailment_releases_when_export_drops_below_limit():
-    # Converged curtailment must climb back toward 1.0 once generation no longer
-    # exceeds the feed limit (gradual release, no latch).
-    feed_limit, site_load = 300.0, 100.0
+def test_curtailment_releases_when_battery_regains_headroom():
+    # Converged curtailment must climb back toward 1.0 once the battery regains
+    # charge headroom (gradual release, no latch) -- PV level is unchanged, only
+    # the battery's ability to absorb the surplus changes.
+    feed_limit, pv_available, site_load = 300.0, 600.0, 100.0
     ctrl = EdgeController(_params(kp=0.5, ki=0.5), _batt(max_warn=90.0))
     curtail = 1.0
-    for _ in range(60):  # converge at high generation
+    for _ in range(60):  # converge while battery is full
         curtail, _ = _curtail_plant_step(
-            ctrl, curtail, pv_available=600.0, site_load=site_load, feed_limit=feed_limit
+            ctrl, curtail, pv_available=pv_available, site_load=site_load, feed_limit=feed_limit
         )
     assert curtail < 0.8
-    for _ in range(60):  # sun drops: delivered PV can no longer breach the limit
-        curtail, _ = _curtail_plant_step(
-            ctrl, curtail, pv_available=350.0, site_load=site_load, feed_limit=feed_limit
+    for _ in range(60):  # battery regains headroom and drops out of the high-SoC
+        curtail, _ = _curtail_plant_step(  # warning band: it absorbs the surplus instead
+            ctrl,
+            curtail,
+            pv_available=pv_available,
+            site_load=site_load,
+            feed_limit=feed_limit,
+            charge_hl=1000.0,
+            soc=70.0,
         )
-    assert curtail == pytest.approx(1.0, abs=0.02)              # released back toward no curtailment
+    assert curtail == pytest.approx(1.0, abs=0.02)              # released back toward no curtail

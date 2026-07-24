@@ -32,6 +32,11 @@ DERATE_DEADBAND = 0.01
 CURTAIL_GAIN = 0.5  # integrating feed-limit curtailment loop gain (0 < g <= 1)
 # Tolerance for "is the raw PI output past the clamp limit" comparisons (kW).
 _SAT_EPS = 1e-9
+# Fallback "ceiling" for the t7 curtailment ramp when no site feed limit is
+# configured. Large enough to be well above any realistic export so the ramp
+# still starts from "no extra constraint" at the warning-band entry and still
+# reaches exactly 0 at the hard SoC ceiling.
+NO_FEED_LIMIT_KW = 1.0e6
 
 
 @dataclass(frozen=True)
@@ -224,24 +229,45 @@ def compute(
         derate_factor = _clamp(ramp, derate.load_min_derate, 1.0)
     derate_factor = _deadband(derate_factor, state.derate_factor)
 
-    # t7 -- high-SoC PV curtailment: an INTEGRATING regulator that holds PCC
-    # export at the feed limit while the battery is in the high-SoC band and can
-    # no longer absorb. curtail_factor is the integrator state (carried in
-    # ControlState, clamped to [pv_min_derate, 1.0] for anti-windup). Each cycle
-    # it is nudged by the export overshoot, normalised by the *available* PV --
-    # estimated as pv_meas / curtail_prev, since the plant applies Pcurtailment as
-    # a ceiling on available capacity (controller only sees curtailed pv_meas).
-    # This removes the steady-state offset of the old one-shot proportional cut
-    # (which divided by pv_meas and so under-curtailed); at equilibrium feed_error
-    # = 0 -> export sits exactly on the limit. Releasing happens gradually (the
-    # integrator climbs back toward 1.0) so there is no boundary hunting.
-    if (
-        inputs.max_feed_kw is not None
-        and battery.max_warning_soc_pct > 0
-        and inputs.soc_pct >= battery.max_warning_soc_pct
-    ):
-        export_kw = -inputs.pcc_meas_kw                 # +ve when exporting
-        feed_error = export_kw - inputs.max_feed_kw     # +ve => over the feed limit
+    # t7 -- PV curtailment: an INTEGRATING regulator (curtail_factor is the
+    # integrator state, carried in ControlState, clamped to [pv_min_derate, 1.0]
+    # for anti-windup). Each cycle it is nudged by the export overshoot vs a
+    # *target*, normalised by the *available* PV -- estimated as pv_meas /
+    # curtail_prev, since the plant applies Pcurtailment as a ceiling on
+    # available capacity (controller only sees curtailed pv_meas). This avoids
+    # the steady-state offset a one-shot proportional cut would leave; at
+    # equilibrium feed_error = 0 -> export sits exactly on the target. Releasing
+    # happens gradually (the integrator climbs back toward 1.0) so there is no
+    # boundary hunting.
+    #
+    # The export TARGET ramps across the high-SoC warning band
+    # (max_warning_soc_pct -> max_soc_pct): from the site's feed limit (i.e.
+    # effectively no extra constraint under normal export levels) down to 0
+    # (full self-consumption) exactly at the hard ceiling. Priority order is
+    # PV -> BESS -> load-shed; grid export is the last resort. This -- not a
+    # single on/off switch fired by avail_charge_kw hitting 0 -- is what avoids
+    # a bang-bang relay: gating curtailment on a step function created a ~12s
+    # limit cycle on the rig (charge to the ceiling -> full curtail -> SoC dips
+    # -> full release -> repeat). Ramping the target lets PV ease off smoothly
+    # as the battery approaches full, well before it actually saturates.
+    #
+    # Belt-and-braces: if the BMS ever reports zero charge headroom outright
+    # (avail_charge_kw <= 0 -- the same signal that clamps `upper` above), the
+    # target is forced to 0 regardless of where SoC nominally sits relative to
+    # the configured band, in case headroom is lost for a reason other than
+    # the SoC thresholds tracked here.
+    span = battery.max_soc_pct - battery.max_warning_soc_pct
+    in_band = battery.max_warning_soc_pct > 0 and inputs.soc_pct > battery.max_warning_soc_pct
+    no_headroom = inputs.avail_charge_kw <= 0.0
+    if in_band or no_headroom:
+        if span > 0:
+            frac = _clamp((inputs.soc_pct - battery.max_warning_soc_pct) / span, 0.0, 1.0)
+        else:
+            frac = 1.0
+        ceiling_kw = inputs.max_feed_kw if inputs.max_feed_kw is not None else NO_FEED_LIMIT_KW
+        target_kw = 0.0 if no_headroom else ceiling_kw * (1.0 - frac)
+        export_kw = -inputs.pcc_meas_kw                  # +ve when exporting
+        feed_error = export_kw - target_kw               # +ve => over target
         pv_gen = abs(inputs.pv_active_power_kw)
         prev = state.curtail_factor if state.curtail_factor > 0.0 else 1.0
         if pv_gen > 0.0:
@@ -251,7 +277,8 @@ def compute(
         else:
             curtail_factor = _clamp(prev, derate.pv_min_derate, 1.0)
     else:
-        # outside the high-SoC band (or no feed limit): no curtailment.
+        # below the warning band and headroom available: no curtailment
+        # needed, the battery absorbs the surplus instead.
         curtail_factor = 1.0
 
     new_state = ControlState(

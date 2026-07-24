@@ -17,7 +17,7 @@ assets:
     class: pcc
     name: PCC monitor
     nominal: { voltage_v: 230, frequency_hz: 50 }
-    limits: { max_current_a: 100, max_supply_power_kva: 1000, max_feed_power_kva: 999 }
+    limits: { max_current_a: 100, max_supply_power_kva: 1000, max_feed_power_kva: 300 }
     comm:
       protocol: modbus_tcp
       host: sim-grid
@@ -31,12 +31,12 @@ assets:
     flexibility:
       control: power_setpoint
       limits:
-        max_charge_kw: 1000
-        max_discharge_kw: 1000
-        min_soc_pct: 5
-        max_soc_pct: 95
+        max_charge_kw: 500
+        max_discharge_kw: 500
+        min_soc_pct: 10
+        max_soc_pct: 90
         min_warning_soc_pct: 20
-        max_warning_soc_pct: 90
+        max_warning_soc_pct: 85
     nominal: { capacity_kwh: 215 }
     comm:
       protocol: modbus_tcp
@@ -52,7 +52,7 @@ assets:
       control: derate
       limits: { min_derate_factor: 0.0 }
     nominal: { max_active_power_kw: 500 }
-    limits: { max_power_kva: 600 }
+    limits: { max_power_kva: 501 }
     comm:
       protocol: modbus_tcp
       host: sim-pv
@@ -65,8 +65,8 @@ assets:
     name: Flexible load
     flexibility:
       control: derate
-      limits: { min_derate_factor: 0.2 }
-    nominal: { max_active_power_kw: 700 }
+      limits: { min_derate_factor: 0.3 }
+    nominal: { max_active_power_kw: 500 }
     comm:
       protocol: modbus_tcp
       host: sim-load
