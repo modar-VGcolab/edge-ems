@@ -412,8 +412,8 @@ Closed-loop bring-up — full runbook in **`hil/schematic/RIG_CLOSED_LOOP.md`**:
 # 0. open + compile BP09_ext_v1.tse and START the simulation in HIL SCADA, then:
 python -m hil.schematic.verify_signals          # every binding resolves (0 unresolved)
 python -m hil.schematic.signal_bridge --asset-config configs/asset_config.docker.yaml
-#      ^ serves one Modbus server per asset (ports 5020-5023; +5024 for the
-#        load-02 meter once its bridge wiring is enabled) and drives the model
+#      ^ serves one Modbus server per asset (ports 5020-5024, incl. the load-02
+#        fixed-load meter used for PFC reactive-balance closure) and drives the model
 
 # core + controller + InfluxDB + MQTT in containers, reaching the host bridge
 # over host.docker.internal:

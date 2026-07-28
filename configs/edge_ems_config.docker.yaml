@@ -20,8 +20,15 @@ mqtt:
 
 controller:
   update_period: 1.0        # s
-  Kp: 0.5
-  Ki: 0.5
+  Kp: 0.3                   # detuned for the rig comms latency (was 0.5)
+  Ki: 0.2                   # was 0.5; Kp/Ki=0.5/0.5 is underdamped once the
+                            # bridge+Modbus+InfluxDB+MQTT dead time is included.
+                            # 0.3/0.2 removes the first-swing overshoot (zero
+                            # overshoot, ~12-15 s settle) at 1-2 cycles of delay;
+                            # see hil/tuning/tune_pi_latency.py. Confirm on the rig.
+  Kd: 0.0                   # derivative gain (on measurement)
+  deriv_filter_tau: 0.0     # s; low-pass on the derivative (0 = unfiltered)
+  pv_feedforward_gain: 0.0  # [0,1] fraction of PV offset fed forward
   timeout_period: 2.0       # s, staleness threshold (>= update_period)
   hold_max_s: 10.0          # s in HOLD before transitioning to SAFE
   slew_limit_kw_s: 200.0    # battery setpoint slew limit
@@ -39,6 +46,23 @@ droop:
     dP_V: [0.0, 0.0, 0.0, 0.0]
     dQ_V: [-0.1, -0.05, 0.05, 0.1]
     V: [207, 219, 241, 253]
+
+# Tariff-driven power-factor control at the PCC. When enabled, the active window
+# (local wall-clock) sets a PF goal that the controller turns into a battery
+# reactive setpoint; Q-V droop (above) keeps priority whenever it is commanding.
+# q_sign_convention (+1/-1) calibrates the battery VarSet direction against the
+# live PCC meter -- VERIFY on the rig, may need flipping (like the other sign
+# flags). s_rated_kva clamps reactive to the inverter capability circle.
+pfc:
+  enabled: true
+  q_sign_convention: 1        # +1 or -1; confirm against PCC reactive sign on rig
+  s_rated_kva: 500            # battery inverter apparent rating for the Q clamp
+  default:
+    pf_target: 1.0            # unity outside every window (no reactive command)
+    mode: unity
+  windows:
+    - {start: "08:00", end: "20:00", pf_target: 0.95, mode: lagging}   # peak: absorb VARs (inductive)
+    - {start: "20:00", end: "08:00", pf_target: 0.98, mode: leading}   # off-peak: supply VARs (capacitive)
 
 asset_aggregation:
   battery:

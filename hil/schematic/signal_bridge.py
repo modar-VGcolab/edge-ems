@@ -107,13 +107,12 @@ ASSET_MAPS = {
     "bess-01": "maps/custom_bess_v1.yaml",
     "pv-01": "maps/custom_pv_inverter_v1.yaml",
     "load-01": "maps/flexible_load_v1.yaml",
-    # meter-01 (fixed-load telemetry) is intentionally OMITTED: the controller's
-    # control law never reads the `meter` class (data_model: control=none, not in
-    # aggregates), and the loads are metered by their own UI/"loads Meter". Leaving it out avoids
-    # serving a register set nothing consumes. If you DO want fixed-load telemetry,
-    # re-add the line below and the matching SIGNALS["meter-01"] block, bound to the
-    # Variable Load (Generic) UI outputs ("Load-01-UI.*").
-    # "meter-01": "maps/meter_v1.yaml",
+    # load-02 (class meter): fixed-load telemetry, added 2026-07-24 so the PFC
+    # reactive math (controller.pfc.reactive_setpoint_kvar's other_reactive_kvar)
+    # can size the battery's Q residual against what's already on the PCC,
+    # instead of ignoring this ~50 kVAr lagging load entirely. `data_model`'s
+    # `meter` class is control=none -- this asset is read-only, never dispatched.
+    "load-02": "maps/meter_v1.yaml",
 }
 
 # Canonical point -> Typhoon model signal name in BP09_ext_v1.tse.
@@ -160,17 +159,22 @@ SIGNALS = {
         "_enable": "load-01-UI.Enable",
         # NOTE: Variable Load (Generic) has NO "Balance enable" (single Pref).
     },
-    # Optional fixed-load telemetry (disabled; see ASSET_MAPS note). To enable,
-    # uncomment the meter-01 line above and bind P/Q to the Variable Load (Generic)
-    # UI outputs. V/F/I are not block outputs of that load; reuse the PCC meter
-    # (same LV bus) or drop them from maps/meter_v1.yaml.
-    # "meter-01": {
-    #     "voltage_v": f"{PCC_METER}.VAn_RMS",
-    #     "frequency_hz": f"{PCC_METER}.Freq",
-    #     "current_a": f"{PCC_METER}.I_RMS",            # VERIFY: PCC current != load current
-    #     "active_power_kw": "Load-01-UI.Pmeas_kW",     # VERIFY name
-    #     "reactive_power_kvar": "Load-01-UI.Qmeas_kVAr",  # VERIFY name
-    # },
+    # Fixed-load telemetry (load-02, a Constant Impedance Load with no probe of
+    # its own). "loads Meter.POWER_P/Q" is a Three-phase Power Meter block
+    # confirmed by direct signal read on 2026-07-24 (99703.8 W / 49280.95 VAr),
+    # same raw W/VAr convention as PCC_METER -> needs the same PCC_POWER_SCALE.
+    # It reads load-01 + load-02 COMBINED (both loads' phase terminals join at
+    # the same junction before this meter -- confirmed from the .tse wiring), so
+    # _push_meter() subtracts load-01's own separately-probed Pmeas_kW/Qmeas_kVAr
+    # to isolate load-02 alone. V/F/I are not block outputs of load-02; reuse the
+    # PCC meter (same LV bus) since nothing downstream consumes this asset's V/F/I.
+    "load-02": {
+        "voltage_v": f"{PCC_METER}.VAn_RMS",
+        "frequency_hz": f"{PCC_METER}.Freq",
+        "current_a": f"{PCC_METER}.I_RMS",           # VERIFY: PCC current != load-02 current; unused by the control law
+        "active_power_kw": "loads Meter.POWER_P",    # confirmed via read_analog_signal 2026-07-24
+        "reactive_power_kvar": "loads Meter.POWER_Q",  # confirmed via read_analog_signal 2026-07-24
+    },
 }
 
 # SCADA input per profile-injection channel (grid excursions, irradiance, ...).
@@ -363,7 +367,7 @@ class TyphoonSignalBridge:
             self._push_pull_pv()
         if self.active["load-01"]:
             self._push_pull_load()
-        if self.active.get("meter-01"):
+        if self.active.get("load-02"):
             self._push_meter()
 
     def _push_pcc(self) -> None:
@@ -379,14 +383,32 @@ class TyphoonSignalBridge:
                     PCC_Q_SIGN * PCC_POWER_SCALE * self._read_meas(sig["reactive_power_kvar"]))
 
     def _push_meter(self) -> None:
-        # passive fixed-load meter: measurement only, no setpoints to pull back.
-        # (Disabled by default -- see ASSET_MAPS / SIGNALS notes.)
-        s, sig = self.servers["meter-01"], SIGNALS["meter-01"]
+        """Fixed-load (load-02) telemetry: measurement only, no setpoints to pull
+        back (data_model `meter` class is control=none).
+
+        "loads Meter.POWER_P/Q" reads load-01 + load-02 COMBINED (both loads'
+        phase terminals join at one junction before this meter -- confirmed
+        from the .tse wiring), so load-02's own contribution is isolated by
+        subtracting load-01's separately-probed Pmeas_kW/Qmeas_kVAr. Those are
+        already in kW/kVAr (no scale applied in _push_pull_load); the "loads
+        Meter" block is the same raw-W/VAr Power Meter type as the PCC meter,
+        so it needs PCC_POWER_SCALE applied first, before the subtraction.
+        """
+        s, sig = self.servers["load-02"], SIGNALS["load-02"]
         s.set_point("voltage_v", self._read_meas(sig["voltage_v"], floor=0.0))
         s.set_point("frequency_hz", self._read_meas(sig["frequency_hz"], floor=0.0))
         s.set_point("current_a", self._read_meas(sig["current_a"], floor=0.0))
-        s.set_point("active_power_kw", PCC_POWER_SCALE * self._read_meas(sig["active_power_kw"]))
-        s.set_point("reactive_power_kvar", PCC_POWER_SCALE * self._read_meas(sig["reactive_power_kvar"]))
+        combined_p_kw = PCC_POWER_SCALE * self._read_meas(sig["active_power_kw"])
+        combined_q_kvar = PCC_POWER_SCALE * self._read_meas(sig["reactive_power_kvar"])
+        load01_sig = SIGNALS["load-01"]
+        load01_p_kw = self._read_meas(load01_sig["active_power_kw"])
+        load01_q_kvar = self._read_meas(load01_sig["reactive_power_kvar"])
+        # Floor active power at 0 (load-02 cannot generate); reactive is left
+        # unfloored -- a small negative residual here is measurement noise /
+        # read-timing skew between the two signals, not evidence the fixed
+        # load itself is capacitive (it's configured Lag on the rig).
+        s.set_point("active_power_kw", max(0.0, combined_p_kw - load01_p_kw))
+        s.set_point("reactive_power_kvar", combined_q_kvar - load01_q_kvar)
 
     def _push_pull_bess(self) -> None:
         s, sig = self.servers["bess-01"], SIGNALS["bess-01"]

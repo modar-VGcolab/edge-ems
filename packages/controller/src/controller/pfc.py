@@ -10,8 +10,15 @@ Sign conventions (data_model.yaml):
   pcc.reactive_power_kvar   + inductive (lagging) / - capacitive (leading)
 
 So a target PCC reactive is  Q*_pcc = +/- |P_pcc| * tan(acos(pf)) -- positive for
-a lagging goal, negative for leading. The battery VarSet that realises this at the
-PCC meter is  q_sign_convention * Q*_pcc; `q_sign_convention` (+1/-1) exists because
+a lagging goal, negative for leading. The battery isn't the only asset contributing
+reactive power at the PCC, so the residual it needs to supply is
+Q*_battery = Q*_pcc - other_reactive_kvar, where `other_reactive_kvar` is the
+measured sum of every non-battery source (PV, flexible load, fixed load/meter
+classes) in the same PCC sign convention. Skipping this subtraction sizes the
+battery as if it alone must produce the whole target, which badly overshoots
+whenever another asset (e.g. a large fixed load) is already contributing.
+The battery VarSet that realises Q*_battery at the PCC meter is
+q_sign_convention * Q*_battery; `q_sign_convention` (+1/-1) exists because
 the battery-VarSet-to-PCC-reactive direction must be confirmed on the rig (the same
 class of open sign-flag as PCC_P_SIGN / BESS_P_SIGN). Default +1; flip if the meter
 disagrees.
@@ -87,20 +94,36 @@ class PfcController:
         return self.cfg.default.pf_target, self.cfg.default.mode
 
     def reactive_setpoint_kvar(
-        self, now: float, pcc_active_kw: float, battery_active_kw: float
+        self,
+        now: float,
+        pcc_active_kw: float,
+        battery_active_kw: float,
+        other_reactive_kvar: float = 0.0,
     ) -> float:
         """Battery reactive setpoint (kVAr) for the tariff goal active at `now`.
 
         `pcc_active_kw` sizes the reactive so the *PCC* PF hits the target;
         `battery_active_kw` (the active setpoint just computed) sizes the inverter
-        capability clamp. Returns 0.0 for a unity/absent goal.
+        capability clamp. `other_reactive_kvar` is the measured reactive power
+        every non-battery source at the PCC is already contributing (PV,
+        flexible load, fixed load/meter classes), in the PCC's own sign
+        convention (+inductive/lagging, -capacitive/leading, same as
+        `pcc.reactive_power_kvar`). It's subtracted from the PCC target
+        *before* `q_sign_convention` is applied, so the battery is only sized
+        for the residual -- without it, the battery would be commanded as if
+        it alone had to produce the entire target, double-counting whatever
+        the other assets already contribute (e.g. a large fixed load).
+        Defaults to 0.0 for callers/tests with nothing else to subtract.
+        Returns 0.0 for a unity/absent goal.
         """
         pf, mode = self.active_target(now)
         if mode == "unity" or pf >= 1.0:
             return 0.0
         q_mag = abs(pcc_active_kw) * math.tan(math.acos(_clamp(pf, 1e-6, 1.0)))
         pcc_sign = 1.0 if mode == "lagging" else -1.0  # +inductive / -capacitive
-        q = self.cfg.q_sign_convention * pcc_sign * q_mag
+        q_pcc_target = pcc_sign * q_mag  # natural PCC-sign target, before VarSet calibration
+        q_battery_needed = q_pcc_target - other_reactive_kvar  # residual, same PCC sign
+        q = self.cfg.q_sign_convention * q_battery_needed
         if self.cfg.s_rated_kva is not None:
             headroom_sq = self.cfg.s_rated_kva**2 - battery_active_kw**2
             q_lim = math.sqrt(headroom_sq) if headroom_sq > 0.0 else 0.0

@@ -2,8 +2,10 @@
 # bridge. core.py connects to these comm host:port endpoints; hil.schematic.
 # signal_bridge binds one Modbus server per asset to the SAME ports. Everything
 # runs on the rig host, so host=127.0.0.1 and each asset gets its own high port
-# (>=1024, no admin needed). meter-01 is intentionally omitted (the control law
-# never reads the meter class; the bridge does not serve it).
+# (>=1024, no admin needed). load-02 (class meter) is the fixed-load telemetry
+# tap -- the control law reads its aggregate to size the PFC reactive residual
+# (see controller.pfc.reactive_setpoint_kvar's other_reactive_kvar), it does
+# not drive any setpoint back to it.
 
 data_model_version: "0.1"
 
@@ -73,3 +75,14 @@ assets:
       port: 5023
       unit_id: 1
       register_map: maps/flexible_load_v1.yaml
+
+  - id: load-02
+    class: meter
+    name: Fixed load meter
+    limits: { max_power_kw: 100 }
+    comm:
+      protocol: modbus_tcp
+      host: 127.0.0.1
+      port: 5024
+      unit_id: 1
+      register_map: maps/meter_v1.yaml

@@ -35,8 +35,9 @@ from controller.modes import ModeController
 
 
 class LiveSnapshotReader:
-    """Reads the `aggregate` (battery/pv/flexible_load) and `pcc` measurements
-    from InfluxDB into a Snapshot, marking points older than timeout STALE."""
+    """Reads the `aggregate` (battery/pv/flexible_load/meter) and `pcc`
+    measurements from InfluxDB into a Snapshot, marking points older than
+    timeout STALE."""
 
     def __init__(
         self,
@@ -44,7 +45,7 @@ class LiveSnapshotReader:
         site_id: str,
         agg_reader: InfluxAggregateReader,
         pcc_query,  # callable returning iterable of (field, value, ts_unix)
-        agg_classes: Iterable[str] = ("battery", "pv", "flexible_load"),
+        agg_classes: Iterable[str] = ("battery", "pv", "flexible_load", "meter"),
         timeout_s: float = 2.0,
     ):
         self._dm = dm

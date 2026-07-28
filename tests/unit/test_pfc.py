@@ -135,6 +135,71 @@ def test_no_clamp_when_s_rating_absent():
     assert q == pytest.approx(200.0 * math.tan(math.acos(0.7)))  # unclamped
 
 
+# ------------------------------------------------- other_reactive_kvar subtraction
+
+
+def test_other_reactive_kvar_reduces_battery_residual():
+    # A large fixed load already contributing lagging (+) reactive at the PCC
+    # means the battery only needs to make up what's left of the target.
+    pcc = 100.0
+    pf = 0.9
+    pfc = PfcController(_cfg(default=PfcTarget(pf_target=pf, mode="lagging")))
+    q_mag = pcc * math.tan(math.acos(pf))
+    q_alone = pfc.reactive_setpoint_kvar(time.time(), pcc, 0.0)
+    q_with_other = pfc.reactive_setpoint_kvar(time.time(), pcc, 0.0, other_reactive_kvar=30.0)
+    assert q_alone == pytest.approx(q_mag)
+    assert q_with_other == pytest.approx(q_mag - 30.0)
+
+
+def test_other_reactive_kvar_can_exceed_target_and_go_negative():
+    # If the other assets already over-supply the target (a large fixed load
+    # bigger than what's actually needed), the battery must absorb reactive
+    # in the opposite direction, not just clamp at 0.
+    pcc = 50.0
+    pf = 0.95
+    pfc = PfcController(_cfg(default=PfcTarget(pf_target=pf, mode="lagging")))
+    q_mag = pcc * math.tan(math.acos(pf))
+    q = pfc.reactive_setpoint_kvar(time.time(), pcc, 0.0, other_reactive_kvar=q_mag * 3)
+    assert q == pytest.approx(q_mag - q_mag * 3)
+    assert q < 0
+
+
+def test_other_reactive_kvar_applied_before_sign_convention():
+    # q_sign_convention calibrates the battery's own VarSet write direction; the
+    # subtraction must happen in the natural PCC sign convention *first*, then
+    # get flipped along with everything else -- not applied post-flip (which
+    # would subtract in the wrong direction for a flipped site).
+    pcc, pf, other = 100.0, 0.9, 20.0
+    q_mag = pcc * math.tan(math.acos(pf))
+    normal = PfcController(_cfg(default=PfcTarget(pf_target=pf, mode="lagging")))
+    flipped = PfcController(
+        _cfg(q_sign_convention=-1.0, default=PfcTarget(pf_target=pf, mode="lagging"))
+    )
+    q_normal = normal.reactive_setpoint_kvar(time.time(), pcc, 0.0, other)
+    q_flipped = flipped.reactive_setpoint_kvar(time.time(), pcc, 0.0, other)
+    assert q_normal == pytest.approx(q_mag - other)
+    assert q_flipped == pytest.approx(-(q_mag - other))
+
+
+def test_other_reactive_kvar_still_respects_s_limit_clamp():
+    # The residual after subtraction is what gets clamped to inverter capability,
+    # not the raw pre-subtraction target.
+    pfc = PfcController(_cfg(s_rated_kva=50.0, default=PfcTarget(pf_target=0.7, mode="lagging")))
+    q = pfc.reactive_setpoint_kvar(
+        time.time(), pcc_active_kw=200.0, battery_active_kw=0.0, other_reactive_kvar=-500.0
+    )
+    assert q == pytest.approx(50.0)  # driven positive and past S_rated -> clamped at +q_lim
+
+
+def test_other_reactive_kvar_defaults_to_zero():
+    # Backward compatible: omitting the argument matches the pre-existing
+    # single-source behaviour exactly.
+    pfc = PfcController(_cfg(default=PfcTarget(pf_target=0.9, mode="lagging")))
+    q_default = pfc.reactive_setpoint_kvar(time.time(), 100.0, 0.0)
+    q_explicit = pfc.reactive_setpoint_kvar(time.time(), 100.0, 0.0, other_reactive_kvar=0.0)
+    assert q_default == q_explicit
+
+
 # --------------------------------------------------------------- config validation
 
 
@@ -243,3 +308,29 @@ def test_pfc_active_without_droop_configured():
     loop = _loop_with(pfc, None, _snapshot(pcc_kw=80.0))
     r = loop.run_once(time.time())
     assert r.reactive_setpoint_kvar == pytest.approx(-80.0 * math.tan(math.acos(0.95)))
+
+
+def test_pfc_loop_sums_other_reactive_sources_before_sizing_battery():
+    # PV, flexible_load, and meter (fixed load) aggregates each contribute
+    # reactive at the PCC; run_once must sum all three and hand the residual
+    # to pfc.reactive_setpoint_kvar, not size the battery for the whole target.
+    snap = _snapshot(pcc_kw=100.0)
+    snap.aggregates["pv"]["reactive_power_kvar"] = _pv(5.0)
+    snap.aggregates["flexible_load"] = {"reactive_power_kvar": _pv(2.0)}
+    snap.aggregates["meter"] = {"reactive_power_kvar": _pv(47.0)}  # load-02 fixed load
+    pfc = PfcController(_cfg(default=PfcTarget(pf_target=0.9, mode="lagging")))
+    loop = _loop_with(pfc, None, snap)
+    r = loop.run_once(time.time())
+    q_target = 100.0 * math.tan(math.acos(0.9))
+    assert r.reactive_setpoint_kvar == pytest.approx(q_target - (5.0 + 2.0 + 47.0))
+
+
+def test_pfc_loop_missing_reactive_aggregates_default_to_zero():
+    # Sites without flexible_load/meter wired (or a COMM_FAIL aggregate) must not
+    # crash or silently drop PFC -- other_reactive_kvar just degrades to 0, so
+    # the battery is sized for the full target as before this feature existed.
+    snap = _snapshot(pcc_kw=100.0)  # no flexible_load/meter keys at all; pv has no Q field
+    pfc = PfcController(_cfg(default=PfcTarget(pf_target=0.9, mode="lagging")))
+    loop = _loop_with(pfc, None, snap)
+    r = loop.run_once(time.time())
+    assert r.reactive_setpoint_kvar == pytest.approx(100.0 * math.tan(math.acos(0.9)))

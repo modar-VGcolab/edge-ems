@@ -108,6 +108,7 @@ aggregates:
   battery:        [soc_pct, active_power_kw, reactive_power_kvar, available_charge_power_kw, available_discharge_power_kw, converter_alarm]
   pv:             [active_power_kw, reactive_power_kvar]
   flexible_load:  [active_power_kw, reactive_power_kvar]
+  meter:          [active_power_kw, reactive_power_kvar]
   # pcc is a single asset — never aggregated
 
 # Quality flags carried with every InfluxDB record

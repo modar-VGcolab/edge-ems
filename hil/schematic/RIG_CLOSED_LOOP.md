@@ -12,7 +12,7 @@ PV / shedding the flexible load.
         ▲  │  read_analog_signal / set_scada_input_value
         │  ▼
  signal_bridge (host, .venv-rig)
-        │  Modbus TCP  0.0.0.0:5020-5023
+        │  Modbus TCP  0.0.0.0:5020-5024
         ▼  (containers reach it via host.docker.internal)
  ┌─────────────────── docker network ───────────────────┐
  │  core ──► InfluxDB ──► controller ──┐                 │
@@ -51,13 +51,13 @@ python -m hil.schematic.signal_bridge --asset-config configs/asset_config.docker
 
 Expect: `bridge: simulation already running (SCADA-driven); leaving start/stop to
 SCADA.` then `bridge: serving Modbus -> pcc-01@5020, bess-01@5021, pv-01@5022,
-fload-01@5023`. It serves until Ctrl-C. (The bridge binds 0.0.0.0 and only uses
-the *ports* from the config, so this same command works for both the docker and
-host-process configs.) Add `--scenario tracking` to also inject grid/irradiance
-excursions.
+fload-01@5023, load-02@5024`. It serves until Ctrl-C. (The bridge binds 0.0.0.0
+and only uses the *ports* from the config, so this same command works for both
+the docker and host-process configs.) Add `--scenario tracking` to also inject
+grid/irradiance excursions.
 
 > Windows Firewall: the first time a container connects in, allow Python through
-> on ports 5020-5023 (private networks) if prompted, or the Modbus reads will
+> on ports 5020-5024 (private networks) if prompted, or the Modbus reads will
 > time out.
 
 ## 2. Bring up the stack (containers)
@@ -81,7 +81,7 @@ Watch the logs:
 docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.rig.yml logs -f core controller
 ```
 
-Expect in `core`: `core: polling 4 devices at 1.0s for site vgcolab-01`, then
+Expect in `core`: `core: polling 5 devices at 1.0s for site vgcolab-01`, then
 steady reads (no COMM_FAIL). `controller` should report RUN state.
 
 ## 3. Verify the loop
@@ -95,7 +95,7 @@ steady reads (no COMM_FAIL). `controller` should report RUN state.
 
 If `core` logs Modbus COMM_FAIL on every asset: the containers can't reach the
 host bridge. Check (a) the bridge is serving, (b) Windows Firewall allows
-5020-5023, (c) `host.docker.internal` resolves (Docker Desktop maps it
+5020-5024, (c) `host.docker.internal` resolves (Docker Desktop maps it
 automatically).
 
 ## 4. Behavioral checks (settle the remaining `# VERIFY` flags in signal_bridge.py)
@@ -202,10 +202,12 @@ process boundary.
 
 ## Notes
 
-- `load-02` (class `meter`, 100 kW, port 5024) is now declared in
-  `asset_config.docker.yaml`, but the bridge still does **not** serve it until you
-  enable the `meter-01` lines in `signal_bridge.py` (`ASSET_MAPS` + `SIGNALS`).
-  Until then it reads as comm-fail, which is harmless — the control law never
-  reads the `meter` class. Enable it only if you want fixed-load telemetry.
+- `load-02` (class `meter`, 100 kW, port 5024) is declared and served: the
+  bridge reads it every tick (`hil/schematic/signal_bridge.py`'s `ASSET_MAPS` +
+  `SIGNALS["load-02"]`) and it flows through as the `meter` aggregate. The
+  control law does not dispatch it directly (no setpoints), but `pfc.py`'s
+  `reactive_setpoint_kvar` reads its `reactive_power_kvar` as part of
+  `other_reactive_kvar` when sizing the battery's PFC reactive residual —
+  it's telemetry-only, not a controlled asset.
 - Config files are mounted read-only; the running services only read config at
   startup (writes happen on PUT, which this loop never issues).

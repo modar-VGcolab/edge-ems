@@ -228,8 +228,19 @@ class ControlLoop:
             # grid-voltage safety ahead of the economic PF target.
             reactive_sp = dq
             if self.pfc is not None and self.pfc.enabled and abs(dq) < 1e-9:
+                # Sum whatever every other asset is already contributing at the
+                # PCC (PV, flexible load, fixed load/meter) so the battery is
+                # only sized for the residual -- see pfc.reactive_setpoint_kvar's
+                # other_reactive_kvar. Missing/COMM_FAIL aggregates default to 0
+                # via _val(), so this degrades gracefully on sites without one
+                # of these classes wired.
+                other_reactive_kvar = (
+                    _val(snap.aggregates.get("pv", {}).get("reactive_power_kvar"))
+                    + _val(snap.aggregates.get("flexible_load", {}).get("reactive_power_kvar"))
+                    + _val(snap.aggregates.get("meter", {}).get("reactive_power_kvar"))
+                )
                 reactive_sp = self.pfc.reactive_setpoint_kvar(
-                    now, inputs.pcc_meas_kw, battery_sp
+                    now, inputs.pcc_meas_kw, battery_sp, other_reactive_kvar
                 )
             derate, curtail = out.derate_factor, out.curtail_factor
             pcc_error, pi_output, dur = out.pcc_error_kw, out.pi_output_kw, out.loop_duration_ms

@@ -1,9 +1,10 @@
 # Rig (CHIL) asset configuration -- core runs in a CONTAINER and reaches the
 # host-side signal_bridge over host.docker.internal. The bridge binds its Modbus
 # servers to 0.0.0.0:<port> on the rig host; containers connect to those same
-# ports via host.docker.internal. load-02 is a passive meter-class fixed load
-# (control law never reads the meter class); for the bridge to actually serve it,
-# enable the meter-01 lines in hil/schematic/signal_bridge.py (MAPS + SIGNALS).
+# ports via host.docker.internal. load-02 (class meter) is the fixed-load
+# telemetry tap -- the control law reads its aggregate to size the PFC reactive
+# residual (see controller.pfc.reactive_setpoint_kvar's other_reactive_kvar), it
+# does not drive any setpoint back to it.
 #
 # register_map paths are relative to the container WORKDIR /app (maps baked into
 # the image at /app/maps).
@@ -77,7 +78,13 @@ assets:
       unit_id: 1
       register_map: maps/flexible_load_v1.yaml
 
-  # load-02 (passive meter, port 5024) disabled for the rig session: the bridge
-  # does not serve 5024, and core's connect-retry loop on it stalls startup.
-  # Re-enable only after enabling the meter-01 lines in signal_bridge.py.
-  # - 
+  - id: load-02
+    class: meter
+    name: Fixed load meter
+    limits: { max_power_kw: 100 }
+    comm:
+      protocol: modbus_tcp
+      host: host.docker.internal
+      port: 5024
+      unit_id: 1
+      register_map: maps/meter_v1.yaml 
