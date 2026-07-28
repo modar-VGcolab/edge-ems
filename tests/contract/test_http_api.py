@@ -47,6 +47,34 @@ def test_get_and_put_ems_config(client):
     assert on_disk["controller"]["Kp"] == 0.8
 
 
+def test_put_ems_applies_to_a_running_loop(repo_root, dm, tmp_path):
+    # KNOWN_ISSUES #2: a PUT must reach a live loop that supports apply_config,
+    # not just update the stored ConfigManager. The default LoopHandle stub
+    # (used by every other test in this file) has no apply_config -- those
+    # tests implicitly cover the "no live loop attached" no-op path.
+    class SpyLoop:
+        def __init__(self):
+            self.applied_with = None
+            self.state = "running"
+
+        def apply_config(self, cm):
+            self.applied_with = cm
+
+    asset_path = tmp_path / "asset_config.yaml"
+    ems_path = tmp_path / "edge_ems_config.yaml"
+    shutil.copy(repo_root / "configs" / "asset_config.example.yaml", asset_path)
+    shutil.copy(repo_root / "configs" / "edge_ems_config.example.yaml", ems_path)
+    cm = ConfigManager(dm, asset_path, ems_path)
+    spy = SpyLoop()
+    tc = TestClient(create_app(cm, dm, loop=spy))
+
+    raw = tc.get("/config/ems").json()
+    raw["controller"]["Kp"] = 0.8
+    assert tc.put("/config/ems", json=raw).status_code == 200
+    assert spy.applied_with is cm
+    assert spy.applied_with.ems_config.controller.Kp == 0.8
+
+
 def test_put_invalid_ems_is_422_and_file_untouched(client):
     tc, cm, _, ems_path = client
     before = ems_path.read_text()
@@ -174,3 +202,40 @@ def test_setpoint_without_live_loop_is_503(client):
     # default stub LoopHandle has no live setter -> not available
     tc, *_ = client
     assert tc.post("/setpoint", json={"pcc_setpoint_kw": 1.0}).status_code == 503
+
+
+# ------------------------------------------------------- API auth (KNOWN_ISSUES #4)
+
+
+def test_no_token_configured_means_auth_off(client):
+    # Default/today's behavior: CONTROLLER_API_TOKEN unset -> every route works
+    # with no header at all, matching every other test in this file.
+    tc, *_ = client
+    assert tc.get("/status").status_code == 200
+    assert tc.get("/config/assets").status_code == 200
+
+
+def test_protected_routes_reject_missing_or_wrong_key(client, monkeypatch):
+    monkeypatch.setenv("CONTROLLER_API_TOKEN", "s3cret")
+    tc, *_ = client
+    assert tc.get("/status").status_code == 401
+    assert tc.get("/status", headers={"X-API-Key": "wrong"}).status_code == 401
+    assert tc.get("/config/assets").status_code == 401
+    assert tc.post("/loop/start").status_code == 401
+
+
+def test_protected_routes_accept_correct_key(client, monkeypatch):
+    monkeypatch.setenv("CONTROLLER_API_TOKEN", "s3cret")
+    tc, *_ = client
+    headers = {"X-API-Key": "s3cret"}
+    assert tc.get("/status", headers=headers).status_code == 200
+    assert tc.get("/config/assets", headers=headers).status_code == 200
+    raw = tc.get("/config/ems", headers=headers).json()
+    assert tc.put("/config/ems", json=raw, headers=headers).status_code == 200
+
+
+def test_health_and_loop_state_stay_open_even_with_token_set(client, monkeypatch):
+    monkeypatch.setenv("CONTROLLER_API_TOKEN", "s3cret")
+    tc, *_ = client
+    assert tc.get("/health").status_code == 200          # container healthchecks
+    assert tc.get("/loop/state").status_code == 200       # core polls this internally

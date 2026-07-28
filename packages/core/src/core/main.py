@@ -9,6 +9,7 @@ core.orchestrator.
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import queue
 from pathlib import Path
@@ -17,6 +18,7 @@ import yaml
 from common.config_manager import ConfigManager
 from common.config_models import validate_asset_config, validate_edge_ems_config
 from common.data_model import DataModel
+from common.logging_setup import configure_logging
 from common.register_map import load_register_map
 
 from core.adapters.modbus_tcp import ModbusTcpAdapter
@@ -25,6 +27,8 @@ from core.dispatcher import SetpointDispatcher
 from core.influx_writer import InfluxWriter
 from core.orchestrator import Orchestrator
 from core.watchdog import SetpointWatchdog
+
+log = logging.getLogger(__name__)
 
 
 def _load(path):
@@ -62,6 +66,7 @@ async def run() -> None:  # pragma: no cover - service entry
     dm = DataModel.load(Path(dm_path))
     ac = validate_asset_config(_load(asset_path), dm)
     ec = validate_edge_ems_config(_load(ems_path), dm)
+    configure_logging(ec.logging)
     site_id = ac.site.id
 
     # ADR-0001: Core is the configuration authority. Serve the config API on an
@@ -86,7 +91,7 @@ async def run() -> None:  # pragma: no cover - service entry
         _notify.connect(ec.mqtt.broker_address, ec.mqtt.broker_port)
         _notify.loop_start()
     except Exception:  # noqa: BLE001 - notifications are best-effort
-        pass
+        log.warning("config-change MQTT notifier failed to connect", exc_info=True)
     _cfg_topic = f"site/{site_id}/config/changed"
 
     def _on_change(kind, info):  # noqa: ANN001
@@ -111,7 +116,7 @@ async def run() -> None:  # pragma: no cover - service entry
         try:
             await ad.connect()
         except Exception:  # noqa: BLE001 - reconnect handled in the read path
-            pass
+            log.warning("initial connect failed for %r (will retry on read)", ad, exc_info=True)
 
     writer = InfluxWriter(
         dm,
@@ -140,7 +145,7 @@ async def run() -> None:  # pragma: no cover - service entry
         try:
             inbound.put_nowait(json.loads(msg.payload))
         except Exception:  # noqa: BLE001
-            pass
+            log.warning("dropped malformed setpoint message on %r", msg.topic, exc_info=True)
 
     mqtt.on_message = on_message
     mqtt.connect(ec.mqtt.broker_address, ec.mqtt.broker_port)
@@ -149,7 +154,7 @@ async def run() -> None:  # pragma: no cover - service entry
     watchdog.start(asyncio.get_event_loop().time())
 
     period = ec.controller.update_period
-    print(f"core: polling {len(adapters)} devices at {period}s for site {site_id}")
+    log.info("core: polling %d devices at %ss for site %s", len(adapters), period, site_id)
     while True:
         import time as _t
 

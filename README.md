@@ -16,6 +16,27 @@ inverter from a simulated one (*parity by construction*).
 
 ---
 
+## Documentation map
+
+Each doc below lives next to the code it describes rather than in a shared
+`docs/` folder — subsystem docs stay in sync better when they're impossible to
+miss while editing that subsystem. This file is the entry point; the others are
+read on demand.
+
+| Doc | Covers | Read when |
+|---|---|---|
+| **`README.md`** (this file) | Architecture, data model, config reference, how to run each fidelity gate | Starting out |
+| **`KNOWN_ISSUES.md`** | Five tracked follow-ups (4 resolved: config `${VAR}` expansion, hot config reload, API auth, structured logging); the one still OPEN is the real G3 blocker — SunSpec maps unverified against real firmware | Before relying on hot reload/auth/logging, or before real-device sign-off |
+| **`hil/README.md`** | CHIL rig plant side: legacy scenario/action-planner path, component list | Orienting in `hil/` for the first time |
+| **`hil/schematic/RIG_CLOSED_LOOP.md`** | Bring-up runbook for the Typhoon HIL606: bridge, containers, getting the loop to RUN | Bringing the rig up from scratch |
+| **`hil/schematic/RIG_FEATURE_GUIDE.md`** | Exercising self-consumption and tariff PFC once the loop is already up, plus shared verification/troubleshooting | Loop is up; testing or demoing a specific feature |
+| **`hil/reports/chil_report.md`** | *Generated* by `hil.report` — parity, scenario, tuning, loop-budget results. Don't hand-edit. | Checking the latest CHIL validation run |
+| **`deploy/ext-ems/README.md`** | Opt-in external-EMS takeover/release gateway (HIL Scenario 1) | Working on or running Scenario 1 |
+| **`reconciliation/README.md`** | Reconciling generated register maps against the real inverter firmware | Working the firmware-verification blocker (§9) |
+| **`tests/sil/README.md`** | SIL harness: full Docker stack against simulators, no hardware | Running/debugging Gate G2 |
+
+---
+
 ## 1. Architecture at a glance
 
 ```
@@ -85,8 +106,10 @@ to the controller only** — every value crossing an interface is SI.
 
 **Asset classes:** `pcc` (single, never aggregated), `battery` (≥1 required,
 controllable via power setpoint), `pv` (curtailable via derate), `flexible_load`
-(deratable), `meter` (passive). **Aggregates** (`core` writes, controller reads):
-per-class sums for battery/pv/flexible_load. **Quality** flags on every record:
+(deratable), `meter` (passive — measurement only, no setpoints; used for fixed
+loads whose reactive power the controller needs to see but never dispatches).
+**Aggregates** (`core` writes, controller reads): per-class sums for
+battery/pv/flexible_load/meter. **Quality** flags on every record:
 `GOOD` (fresh), `STALE` (older than `timeout_period`), `COMM_FAIL` (adapter
 failure / nothing contributed).
 
@@ -102,8 +125,11 @@ A 400 V / 50 Hz LV feeder with the PCC at the gr    id coupling point.
 | `bess-01` | battery       | ±1000 kW; 2000 kWh; SoC 5–95 %, low-warn 20 %, high-warn 90 %                           |
 | `pv-01`   | pv            | 500 kW peak (max 600 kVA); curtailable, min derate 0.0                                  |
 | `fload-01`| flexible_load | 700 kW; deratable, min derate 0.2                                                       |
+| `meter-01`| meter         | 100 kW fixed load; measurement only (no setpoints) — feeds the PFC reactive balance     |
 
-Defined in `configs/asset_config.example.yaml`.
+Defined in `configs/asset_config.example.yaml`. On the Typhoon rig the fixed
+load is `load-02` (`configs/asset_config.{rig,docker}.yaml`) — same class and
+role, different id/comm block per environment.
 
 ---
 
@@ -176,6 +202,15 @@ edge-ems/
   high-SoC PV curtailment when exporting past the feed limit.
 - **Droop (optional).** P-f / Q-V piecewise-linear correction added to the PCC
   setpoint before the PI sees the error.
+- **Tariff-driven power-factor control (PFC, optional).** A time-of-day tariff
+  schedule (`pfc.windows`) maps the wall clock to a PF goal at the PCC; the
+  controller turns that into a battery reactive setpoint
+  (`controller.pfc.reactive_setpoint_kvar`), sized for the *residual* after
+  subtracting what PV/flexible_load/meter are already contributing
+  (`other_reactive_kvar`) — so a fixed load's reactive draw doesn't get
+  double-counted. Q-V droop keeps priority over PFC whenever it's actively
+  commanding (voltage support beats the economic PF target). See
+  `hil/schematic/RIG_FEATURE_GUIDE.md` for how to exercise it on the rig.
 
 ### Control cycle (target: 250 ms of the 1 s period)
 
@@ -194,11 +229,17 @@ t4 e = setpoint − measured; PI + anti-windup t9 write the `control` measuremen
 **HTTP API (controller, :5000)** — `GET /health`, `GET /status`,
 `GET|PUT /config/assets`, `POST /config/assets/validate`,
 `GET|PUT /config/ems`, `POST /config/ems/validate`, `POST /loop/start|/loop/stop`,
-`POST /setpoint`. Config PUTs apply at the next cycle boundary; structural changes
-(asset added/removed) require the loop stopped (else 409). `POST /setpoint`
-(`{"pcc_setpoint_kw": <float>}`) sets the **live** PCC target on the running loop
-without a restart — used by the external-EMS gateway (§8.5); the applied value is
-echoed back in `GET /status.last_cycle.pcc_setpoint_kw`.
+`POST /setpoint`, `GET /loop/state`. Config PUTs are applied to the running
+loop immediately (`LoopRunner.apply_config`, KNOWN_ISSUES #2) — non-structural
+changes (`Kp`/`Ki`, limits, droop, PFC) take effect from the next cycle with PI
+state carried across; structural changes (asset added/removed) still require
+the loop stopped (else 409). `POST /setpoint` (`{"pcc_setpoint_kw": <float>}`)
+sets the **live** PCC target on the running loop without a restart — used by
+the external-EMS gateway (§8.5); the applied value is echoed back in
+`GET /status.last_cycle.pcc_setpoint_kw`. **Auth:** every route except
+`GET /health` and `GET /loop/state` is gated behind an `X-API-Key` header when
+`CONTROLLER_API_TOKEN` is set (empty/unset = auth off, KNOWN_ISSUES #4); the
+ext-ems gateway sends the same token via its own `CONTROLLER_API_TOKEN`.
 
 **Gateway HTTP API (ext-ems, :5010)** — `GET /health`, `GET /status`
 (`state`, `active_source`, `last_external_age_s`, `watchdog_timeout_s`,
@@ -229,10 +270,25 @@ fields `active_source` 1=following/0=self-consumption, `pcc_setpoint_kw`,
   `POST /config/assets/validate`.
 - **`configs/edge_ems_config.example.yaml`** — InfluxDB/MQTT endpoints,
   `controller` block (`update_period`, `Kp`, `Ki`, `timeout_period`,
-  `hold_max_s`, `slew_limit_kw_s`), `droop` curves, and `asset_aggregation`.
-  Tuned PI defaults committed here: **`Kp=0.5, Ki=0.5`** (see §9).
-- **`configs/.env.example`** — `SITE_ID`, `INFLUX_TOKEN/ORG/BUCKET`, MQTT creds.
-  Copy to `configs/.env` (git-ignored); loaded by Docker Compose.
+  `hold_max_s`, `slew_limit_kw_s`), `droop` curves, `pfc` (tariff windows +
+  PF target, optional), `asset_aggregation`, and `logging` (`level`, optional
+  `file`/`max_file_size`/`backup_count` for log rotation — wired up via
+  `common.logging_setup.configure_logging`, called from both `core.main` and
+  `controller.main` at startup). Tuned PI defaults committed here:
+  **`Kp=0.5, Ki=0.5`** (see §9) — this is the SIL/software-plant tuning; the
+  Typhoon-rig configs (`edge_ems_config.{rig,docker}.yaml`) run **`Kp=0.3,
+  Ki=0.2`** instead, detuned for the rig's real comms round-trip (bridge +
+  Modbus + InfluxDB + MQTT), which the zero-latency software plant doesn't
+  have. **`edge_ems_config.rig.yaml`** (host-process) and
+  **`edge_ems_config.docker.yaml`** (containers) must be kept in sync by hand —
+  there's no shared inheritance between them, and a stale copy silently runs
+  the wrong gains/PFC state with no error (see §9). Non-structural changes to
+  this file take effect on a running loop via `PUT /config/ems` with no
+  restart (§6, KNOWN_ISSUES #2).
+- **`configs/.env.example`** — `SITE_ID`, `INFLUX_TOKEN/ORG/BUCKET`, MQTT creds,
+  and `CONTROLLER_API_TOKEN` (controller HTTP API auth, empty = off, §6,
+  KNOWN_ISSUES #4). Copy to `configs/.env` (git-ignored); loaded by Docker
+  Compose.
 
 All three are cross-validated against `data_model.yaml` at load (unknown
 names/limits, version mismatches, and bad register placements are rejected).
@@ -441,6 +497,11 @@ Supporting tools and configs added for the rig:
 - **`deploy/docker-compose.rig.yml`** — overlay that runs `core`/`controller` as
   containers against the host bridge (excludes the SIL `sim-*` devices).
 
+Once the loop is up, **`hil/schematic/RIG_FEATURE_GUIDE.md`** is the step-by-step
+guide for exercising each controller feature on the rig — self-consumption
+(the default active-power loop) and tariff PFC (§5) — with exact config edits,
+restart/rebuild steps, and how to verify each one from InfluxDB/SCADA.
+
 The legacy scenario/action-planner rig path and the component list are in
 **`hil/README.md`**.
 
@@ -510,9 +571,10 @@ with fakes) and the controller `POST /setpoint` contract tests in
 
 - **Gate G2 (SIL):** all seven scenarios pass against the full Dockerized
   pymodbus simulator stack (`bash tests/sil/run_sil.sh`, or `run_sil.ps1` on
-  Windows). Two follow-ups surfaced while getting here are tracked in
-  `KNOWN_ISSUES.md` (config `${VAR}` expansion; hot reload not applied to the
-  running loop) — both are controller changes, so they were left out per rule #3.
+  Windows). Two follow-ups surfaced while getting here (config `${VAR}`
+  expansion, hot reload not applied to the running loop) were controller
+  changes left out per rule #3 at the time — both are now resolved; see
+  `KNOWN_ISSUES.md`.
 - **Gate G3 (CHIL):** the seven scenarios + three fault injections (InfluxDB
   write stall, MQTT broker loss, asset/battery dropout) pass on the Typhoon
   HIL606, with the 50-asset loop staying under the 250 ms budget.
@@ -526,7 +588,30 @@ The CHIL logic, register parity, PI tuning, and loop budget are **green in the
 software plant-in-the-loop today** (see `hil/reports/chil_report.md`). PI tuning
 moved the defaults from `Kp=0.5, Ki=0.1` (settled ~41 kW, missed the 5 kW band)
 to **`Kp=0.5, Ki=0.5`** (settles <0.2 kW in ~9 s; anti-windup recovery in 3
-cycles), committed to `configs/edge_ems_config.example.yaml`.
+cycles), committed to `configs/edge_ems_config.example.yaml`. On the real rig,
+comms latency (bridge + Modbus + InfluxDB + MQTT) makes those same gains
+underdamped; `hil/tuning/tune_pi_latency.py` recommends **`Kp=0.3, Ki=0.2`**
+for that path (zero first-swing overshoot, ~12-15 s settle at 1-2 cycles of
+delay), committed to `configs/edge_ems_config.{rig,docker}.yaml`.
+
+- **Tariff PFC — confirmed on the Typhoon rig (2026-07-28):** with `pfc.enabled`
+  and the `load-02`/`meter-01` fixed-load meter wired into the `meter`
+  aggregate, enabling PFC dropped measured PCC reactive power from ~47-50 kVAr
+  to ~2.4-2.6 kVAr — the battery absorbing essentially all of the fixed load's
+  reactive draw. `q_sign_convention: 1` is confirmed correct (Q moved toward
+  the target, not away from it). One caveat worth remembering: PF reads near 0
+  whenever PCC active power is near 0 (self-consumption's normal operating
+  point) — `PF = P/√(P²+Q²)` is degenerate at `P≈0` regardless of how well Q is
+  controlled, so don't read a low PF display as PFC failing to work. See
+  `hil/schematic/RIG_FEATURE_GUIDE.md` for the full walkthrough and how to
+  verify it.
+- **Config-drift gotcha found during that verification:** `edge_ems_config.docker.yaml`
+  (the container path) had silently drifted from `edge_ems_config.rig.yaml`
+  (the host-process path) — old `Kp=0.5, Ki=0.5` and no `pfc:` block at all, so
+  the containerized controller was running neither the tuned gains nor PFC
+  despite both being "configured" in the repo. There's no validation that
+  catches this; the two files must be checked for parity by hand whenever
+  either changes.
 
 > **⚠ Firmware verification is an OPEN BLOCKER for the G3 hardware sign-off.**
 > The register maps in `maps/` are a reconstructed **DRAFT**: they load and pass

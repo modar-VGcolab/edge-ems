@@ -6,10 +6,32 @@ Phase 3 without changing this module's contract (system design §3.1).
 
 from __future__ import annotations
 
+import os
+
 from common.data_model import DataModel
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 
 from controller.config_manager import ASSETS, EMS, ConfigManager
+
+
+def _require_api_key(x_api_key: str | None = Header(default=None, alias="X-API-Key")) -> None:
+    """Gate on a shared-secret header when `CONTROLLER_API_TOKEN` is set.
+
+    Unset (the default, matching every SIL/dev/test config today) leaves auth
+    off entirely -- no behavior change for local/CI use. Set it in
+    `configs/.env` for any deployment reachable from more than an isolated
+    bench (KNOWN_ISSUES #4). `GET /health` and `GET /loop/state` are
+    deliberately left ungated: health is read by container healthchecks with
+    no way to carry a header, and /loop/state is polled by `core` itself
+    (ADR-0001) as a trusted internal service -- everything that can read or
+    change config, dispatch setpoints, or start/stop the loop is gated.
+    """
+    token = os.environ.get("CONTROLLER_API_TOKEN")
+    if token and x_api_key != token:
+        raise HTTPException(401, "invalid or missing X-API-Key")
+
+
+_AUTH = [Depends(_require_api_key)]
 
 
 class LoopHandle:
@@ -29,6 +51,14 @@ class LoopHandle:
             return False
         self.state = "stopped"
         return True
+
+
+def _apply_to_running_loop(loop, cm: ConfigManager) -> None:
+    """Push the just-updated config into the running loop, if it supports live
+    reload (a real `LoopRunner`; the test-only `LoopHandle` stub doesn't)."""
+    apply = getattr(loop, "apply_config", None)
+    if apply is not None:
+        apply(cm)
 
 
 def _structural_change(cm: ConfigManager, raw: dict) -> bool:
@@ -54,7 +84,7 @@ def create_app(cm: ConfigManager, dm: DataModel, loop: LoopHandle | None = None)
             "loop_state": loop.state,
         }
 
-    @app.get("/status")
+    @app.get("/status", dependencies=_AUTH)
     def status() -> dict:
         cfg = cm.asset_config
         out = {
@@ -71,11 +101,11 @@ def create_app(cm: ConfigManager, dm: DataModel, loop: LoopHandle | None = None)
 
     # -- config -----------------------------------------------------------------
 
-    @app.get("/config/assets")
+    @app.get("/config/assets", dependencies=_AUTH)
     def get_assets() -> dict:
         return cm.raw(ASSETS)
 
-    @app.put("/config/assets")
+    @app.put("/config/assets", dependencies=_AUTH)
     def put_assets(raw: dict) -> dict:
         if loop.state == "running" and _structural_change(cm, raw):
             raise HTTPException(409, "structural asset change requires loop stop")
@@ -83,39 +113,41 @@ def create_app(cm: ConfigManager, dm: DataModel, loop: LoopHandle | None = None)
         if errors:
             raise HTTPException(422, errors)
         cm.update(ASSETS, raw)
+        _apply_to_running_loop(loop, cm)
         return {"applied": True}
 
-    @app.post("/config/assets/validate")
+    @app.post("/config/assets/validate", dependencies=_AUTH)
     def validate_assets(raw: dict) -> dict:
         errors = cm.validate(ASSETS, raw)
         return {"valid": not errors, "errors": errors}
 
-    @app.get("/config/ems")
+    @app.get("/config/ems", dependencies=_AUTH)
     def get_ems() -> dict:
         return cm.raw(EMS)
 
-    @app.put("/config/ems")
+    @app.put("/config/ems", dependencies=_AUTH)
     def put_ems(raw: dict) -> dict:
         errors = cm.validate(EMS, raw)
         if errors:
             raise HTTPException(422, errors)
         cm.update(EMS, raw)
-        return {"applied": True}  # picked up at the next cycle boundary
+        _apply_to_running_loop(loop, cm)
+        return {"applied": True}  # now applied to the running loop, not just stored
 
-    @app.post("/config/ems/validate")
+    @app.post("/config/ems/validate", dependencies=_AUTH)
     def validate_ems(raw: dict) -> dict:
         errors = cm.validate(EMS, raw)
         return {"valid": not errors, "errors": errors}
 
     # -- loop lifecycle -----------------------------------------------------------
 
-    @app.post("/loop/start")
+    @app.post("/loop/start", dependencies=_AUTH)
     def loop_start() -> dict:
         if not loop.start():
             raise HTTPException(409, "loop already running")
         return {"loop_state": loop.state}
 
-    @app.post("/loop/stop")
+    @app.post("/loop/stop", dependencies=_AUTH)
     def loop_stop() -> dict:
         if not loop.stop():
             raise HTTPException(409, "loop already stopped")
@@ -129,7 +161,7 @@ def create_app(cm: ConfigManager, dm: DataModel, loop: LoopHandle | None = None)
 
     # -- live PCC setpoint --------------------------------------------------------
 
-    @app.post("/setpoint")
+    @app.post("/setpoint", dependencies=_AUTH)
     def set_setpoint(body: dict) -> dict:
         """Set the live PCC target on the running loop (no restart).
 

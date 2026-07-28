@@ -127,6 +127,29 @@ class LoopRunner:
         self._loop.pcc_setpoint_kw = float(value)
         return self._loop.pcc_setpoint_kw
 
+    def apply_config(self, cm: ConfigManager) -> None:
+        """Rebuild config-derived tunables/limits from `cm` and swap them into
+        the *running* loop between cycles (KNOWN_ISSUES #2).
+
+        Reuses the same builder functions `build_control_loop` used at startup,
+        so a reload can never disagree with a fresh boot from the same config.
+        Deliberately does NOT touch `edge.state` (the rolling PI integral, last
+        setpoint, and derivative state) or `modes`' current mode/HOLD timer --
+        a reload must carry those across seamlessly, not reset them. Structural
+        asset changes (added/removed) are refused earlier, at the HTTP layer
+        (`_structural_change` -> 409) while the loop is running, so this only
+        ever has to handle rating/limit/tuning changes on the existing assets.
+        """
+        ac, ec = cm.asset_config, cm.ems_config
+        loop = self._loop
+        loop.edge.params = params_from_config(ec)
+        loop.edge.battery = battery_limits_from_config(ac)
+        loop.edge.derate = derate_limits_from_config(ac)
+        loop.pcc_base_kw, loop.max_feed_kw = pcc_params_from_config(ac)
+        loop.droop = DroopController(ec.droop, loop.pcc_base_kw) if ec.droop.enabled else None
+        loop.pfc = PfcController(ec.pfc) if ec.pfc.enabled else None
+        loop.modes.hold_max_s = ec.controller.hold_max_s
+
     def start(self) -> bool:
         if self.state == "running":
             return False

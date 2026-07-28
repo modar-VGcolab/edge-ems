@@ -56,6 +56,7 @@ Full run procedure and pass criteria: repo `README.md` §8.5 and
 | `SITE_ID` | `vgcolab-01` | topic namespace |
 | `MQTT_BROKER` / `MQTT_PORT` | `mosquitto` / `1883` | broker |
 | `CONTROLLER_URL` | `http://controller:5000` | live-setpoint target |
+| `CONTROLLER_API_TOKEN` | `` (empty = auth off) | sent as `X-API-Key` on every `/setpoint` POST; must match the controller's own `CONTROLLER_API_TOKEN` (KNOWN_ISSUES #4) |
 | `INFLUX_URL`/`INFLUX_ORG`/`INFLUX_BUCKET`/`INFLUX_TOKEN` | from `configs/.env` | telemetry (empty token → no-op writer) |
 | `EXT_PUBLISH_INTERVAL_S` | `300` | external publish cadence |
 | `EXT_WATCHDOG_TIMEOUT_S` | `360` | silence before takeover |

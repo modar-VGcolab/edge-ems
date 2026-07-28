@@ -37,6 +37,9 @@ class Settings:
     controller_url: str = field(
         default_factory=lambda: _s("CONTROLLER_URL", "http://controller:5000")
     )
+    controller_api_token: str = field(
+        default_factory=lambda: _s("CONTROLLER_API_TOKEN", "")
+    )
 
     influx_url: str = field(default_factory=lambda: _s("INFLUX_URL", "http://influxdb:8086"))
     influx_org: str = field(default_factory=lambda: _s("INFLUX_ORG", "edge"))

@@ -1,10 +1,16 @@
 # Known issues
 
-Open issues found while bringing the SIL stack (Gate G2) to green on 2026-06-19.
-Both are **controller-code** changes, so per project rule #3 ("no controller code
-changes to make SIL/CHIL pass") they were left out of the SIL fix and are tracked
-here as follow-ups. The SIL suite passes today by working around them in the test
-harness / SIL config; the items below are about the real `services` deployment.
+Items 1-2 were found while bringing the SIL stack (Gate G2) to green on
+2026-06-19; both are **controller-code** changes, so per project rule #3 ("no
+controller code changes to make SIL/CHIL pass") they were left out of the SIL
+fix and tracked here instead. Items 4-5 surfaced from a 2026-07-28 review of
+what's still open before running the controller on a real industrial PC
+against real field devices, rather than the Typhoon rig or simulators.
+
+**Status at a glance:** 1, 2, 4, and 5 are RESOLVED. **Item 3 is the one item
+still OPEN**, and it's the real blocker — Gate G3 rig sign-off against actual
+field devices cannot happen until it's closed; nothing else on this page
+blocks SIL/CHIL or the Typhoon rig.
 
 ---
 
@@ -84,6 +90,22 @@ and use the example config with a real `INFLUX_TOKEN` in `configs/.env`.
 ## 2. Hot config reload is not applied to the running control loop
 
 **Severity:** medium (operability; the API reports success but nothing changes).
+
+**Status: RESOLVED (2026-07-28).** `LoopRunner.apply_config(cm)`
+(`packages/controller/src/controller/runtime.py`) rebuilds `params`,
+`battery`, `derate`, `pcc_base_kw`/`max_feed_kw`, `droop`, `pfc`, and
+`modes.hold_max_s` from `cm` via the same builder functions used at startup,
+and swaps them into the running loop between cycles — option 1 below,
+implemented. `edge.state` (PI integral, last setpoint, derivative filter) and
+the current mode/HOLD timer are left untouched, so a reload carries state
+seamlessly rather than resetting it. Wired into both `PUT /config/assets` and
+`PUT /config/ems` in `http_api.py` via `_apply_to_running_loop`, which no-ops
+against the test-only `LoopHandle` stub (`getattr(loop, "apply_config", None)`)
+so nothing else changes. Regression tests:
+`tests/unit/test_runtime.py::test_apply_config_updates_tunables_without_resetting_state`
+and `tests/contract/test_http_api.py::test_put_ems_applies_to_a_running_loop`.
+The CHIL `config_reload` scenario strengthening (assert the `control` series
+actually responds to a new limit) is still open as a nice-to-have, not blocking.
 
 **Partial update (2026-06-30).** A *targeted* live-update path now exists for the
 PCC setpoint: `POST /setpoint` calls `LoopRunner.set_pcc_setpoint_kw`, which mutates
@@ -166,3 +188,91 @@ re-run `hil.parity_check` + `pytest tests hil/tests -q`, then record a real
 encode→write→read→decode round-trip. Commit the real dump artifacts under
 `reconciliation/` for traceability and flip this entry + the hil/README blocker
 to closed.
+
+---
+
+## 4. Controller HTTP API has no authentication
+
+**Severity:** medium (operability/security; not a functional blocker on an
+isolated bench, but relevant before running on a real industrial PC or any
+network beyond one).
+
+**Status: RESOLVED (2026-07-28).** `_require_api_key` in `http_api.py` gates
+every route except `GET /health` (container healthchecks) and `GET /loop/state`
+(polled internally by `core`, ADR-0001) behind an `X-API-Key` header checked
+against `CONTROLLER_API_TOKEN`. Unset (default, matches every SIL/dev/test
+config today) leaves auth off with no behavior change. The external-EMS
+gateway's `ControllerForwarder` (`deploy/ext-ems/ext_ems/forwarder.py`) sends
+the same token to `/setpoint`, sourced from the same `CONTROLLER_API_TOKEN` in
+`configs/.env` (documented in `.env.example`) via each container's existing
+`env_file`. Regression tests: `tests/contract/test_http_api.py`
+(`test_protected_routes_reject_missing_or_wrong_key`,
+`test_protected_routes_accept_correct_key`,
+`test_health_and_loop_state_stay_open_even_with_token_set`). Not done: mutual
+TLS / a reverse proxy — the shared-secret header is the minimum bar, not the
+ceiling, if the industrial PC sits on a network wider than an isolated bench.
+
+**Symptom.** `GET|PUT /config/assets`, `GET|PUT /config/ems`,
+`POST /config/*/validate`, `POST /loop/start|/stop`, `POST /setpoint`, and
+`GET /status` are all reachable with no token, credential, or auth header
+check. `deploy/docker-compose.yml` publishes the controller port to the host
+(`ports: ["5000:5000"]`), so anything that can reach that host/port can change
+limits, gains, PFC targets, or the live PCC setpoint.
+
+**Root cause.** `packages/controller/src/controller/http_api.py`'s
+`create_app()` never registers an auth dependency/middleware; every route is
+open by default.
+
+**Fix.** Add a lightweight auth layer before this runs on any network that
+isn't an isolated bench: a shared-secret header checked via a FastAPI
+`Depends()` (backed by a `CONTROLLER_API_TOKEN` env var) is the minimum bar;
+consider mutual TLS or an authenticating reverse proxy if the industrial PC is
+reachable from a wider network. Keep `GET /health` open so container
+healthchecks don't need credentials.
+
+**Regression test.** Contract test asserting an unauthenticated request to a
+mutating endpoint (`PUT /config/assets`, `POST /setpoint`) returns 401, and the
+same request with a valid token succeeds.
+
+---
+
+## 5. `logging.level` config field is declared but never wired up
+
+**Severity:** low (observability; doesn't affect control behavior).
+
+**Status: RESOLVED (2026-07-28).** `common/logging_setup.py` (new, shared by
+both entrypoints) adds `configure_logging(cfg: LoggingConfig)`: sets the root
+logger's level from `cfg.level`, always attaches a stream handler, and adds a
+`RotatingFileHandler` when `cfg.file` is set (`max_file_size`/`backup_count`
+default to 10 MB / 3 backups if unset — those two fields were *also*
+unused before this). Called from `controller.main.build_app()` and
+`core.main.run()` right after each resolves its config. `core.main`'s bare
+`print()` is now `logger.info(...)`, and its three previously-silent
+`except Exception: pass` blocks (MQTT notifier connect, adapter connect,
+malformed inbound MQTT message) now log a warning instead of swallowing the
+failure outright. Regression tests: `tests/unit/test_logging_setup.py`.
+Deliberately not done: per-cycle log points beyond startup (mode transitions,
+HOLD/SAFE entry/exit, dispatch rejections) — the plumbing exists now, but
+picking *which* events to log at what level is a separate, smaller follow-up.
+
+**Symptom.** Every `edge_ems_config.*.yaml` declares a `logging: level: "INFO"`
+block, but nothing in `core.main` or `controller.main` configures a logger
+from it. `core` emits a single `print()` at startup; `controller` has no
+equivalent. There are no per-cycle/per-event log lines, levels, timestamps, or
+rotation — diagnosing a field issue today means reading InfluxDB's `control`/
+aggregate measurements after the fact, not a log stream.
+
+**Root cause.** `common.config_models` models the field, but `core.main`/
+`controller.main` never read `ec.logging.level` or call anything in the
+`logging` module beyond an incidental `getLogger(__name__)` in
+`controller/config_client.py` (which nothing configures).
+
+**Fix.** In both entrypoints, call `logging.basicConfig(level=ec.logging.level, ...)`
+early in `main()`/`build_app()`, and replace the bare `print()` in `core.main`
+with a `logger.info(...)` call. Pick a minimal set of per-cycle log points
+(mode transitions, HOLD/SAFE entry/exit, dispatch rejections) rather than full
+per-cycle verbosity at INFO, which would flood the log at 1 Hz.
+
+**Regression test.** Unit test that `logging.level: "DEBUG"` in a loaded config
+results in the package logger's effective level being DEBUG after
+`build_app()`/`main()` runs its setup.

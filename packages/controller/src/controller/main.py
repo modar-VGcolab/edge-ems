@@ -13,6 +13,7 @@ from pathlib import Path
 
 import uvicorn
 from common.data_model import DataModel
+from common.logging_setup import configure_logging
 
 from controller.config_manager import ConfigManager
 from controller.data_connector import InfluxAggregateReader, MqttSetpointPublisher
@@ -154,6 +155,7 @@ def _maybe_start_config_watcher(cm):  # pragma: no cover - live wiring
 
 def build_app():  # pragma: no cover - service entry
     dm, cm = _resolve_config()
+    configure_logging(cm.ems_config.logging)
     runner = build_runner(cm, dm)
     app = create_app(cm, dm, loop=runner)
     _maybe_start_config_watcher(cm)

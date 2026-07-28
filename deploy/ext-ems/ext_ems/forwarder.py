@@ -15,9 +15,13 @@ log = logging.getLogger("ext_ems.forwarder")
 
 
 class ControllerForwarder:
-    def __init__(self, controller_url: str, timeout_s: float = 2.0):
+    def __init__(self, controller_url: str, api_token: str = "", timeout_s: float = 2.0):
         self._url = controller_url.rstrip("/") + "/setpoint"
-        self._client = httpx.Client(timeout=timeout_s)
+        # /setpoint is gated when the controller has CONTROLLER_API_TOKEN set
+        # (KNOWN_ISSUES #4); an empty token means auth is off there too, so
+        # sending an empty header is harmless against an ungated controller.
+        headers = {"X-API-Key": api_token} if api_token else {}
+        self._client = httpx.Client(timeout=timeout_s, headers=headers)
 
     def forward(self, pcc_setpoint_kw: float) -> bool:
         try:

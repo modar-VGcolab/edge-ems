@@ -59,7 +59,7 @@ async def run() -> None:
         settings.reconnect_at,
     )
 
-    forwarder = ControllerForwarder(settings.controller_url)
+    forwarder = ControllerForwarder(settings.controller_url, settings.controller_api_token)
     influx = InfluxStateWriter(
         settings.influx_url,
         settings.influx_org,
