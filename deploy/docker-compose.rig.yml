@@ -10,8 +10,16 @@
 #     --profile services up -d --build
 #
 # This brings up influxdb, mosquitto, core, controller (the `services` profile
-# excludes the sim-* devices). Host configs are mounted read-only so editing a
-# config + `up -d` re-applies it without a rebuild.
+# excludes the sim-* devices). Host configs are bind-mounted read-write: editing
+# a config + `up -d` re-applies it without a rebuild, and PUT /config/assets or
+# /config/ems (core's :5100 API or controller's :5000 API) persists back to the
+# same host file core/controller/the bridge all read -- not just an in-memory
+# change. Was read-only until 2026-07-29; that broke PUT with an unhandled
+# "Read-only file system" 500 once hot-reload (KNOWN_ISSUES #2) made PUT
+# actually take effect on the running loop -- previously PUT never applied
+# anything, so the write failure went unnoticed. If you don't want the
+# container able to write host config files, revert to `:ro` and use file-edit
+# + restart instead of PUT on this path.
 
 services:
   core:
@@ -20,7 +28,7 @@ services:
       EMS_CONFIG_PATH: /app/configs/edge_ems_config.docker.yaml
       DATA_MODEL_PATH: /app/data_model.yaml
     volumes:
-      - ../configs:/app/configs:ro          # host configs -> container (rig configs included)
+      - ../configs:/app/configs:rw          # host configs <-> container (rig configs included)
     extra_hosts:
       - "host.docker.internal:host-gateway" # reach the host-side bridge (Linux engines)
 
@@ -30,7 +38,7 @@ services:
       ASSET_CONFIG_PATH: /app/configs/asset_config.docker.yaml
       EMS_CONFIG_PATH: /app/configs/edge_ems_config.docker.yaml
     volumes:
-      - ../configs:/app/configs:ro
+      - ../configs:/app/configs:rw
 
   # --- external-EMS takeover gateway (HIL Scenario 1) -----------------------
   # Opt-in: only started with `--profile ext-ems`, so the normal A-E runs (which

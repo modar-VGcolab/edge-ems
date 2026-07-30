@@ -209,5 +209,10 @@ process boundary.
   `reactive_setpoint_kvar` reads its `reactive_power_kvar` as part of
   `other_reactive_kvar` when sizing the battery's PFC reactive residual —
   it's telemetry-only, not a controlled asset.
-- Config files are mounted read-only; the running services only read config at
-  startup (writes happen on PUT, which this loop never issues).
+- Config files are bind-mounted **read-write** (`docker-compose.rig.yml`,
+  changed from `:ro` on 2026-07-29): non-structural EMS config changes now
+  apply to the running loop without a restart (`PUT /config/ems`,
+  `LoopRunner.apply_config`, KNOWN_ISSUES #2), and that PUT persists back to
+  the same host file the bridge/core/controller all read. If you'd rather the
+  containers never write host files, revert both `core`'s and `controller`'s
+  mounts to `:ro` and stick to file-edit + restart instead of PUT on this path.

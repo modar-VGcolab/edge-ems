@@ -91,19 +91,41 @@ and use the example config with a real `INFLUX_TOKEN` in `configs/.env`.
 
 **Severity:** medium (operability; the API reports success but nothing changes).
 
-**Status: RESOLVED (2026-07-28).** `LoopRunner.apply_config(cm)`
+**Status: RESOLVED (2026-07-28, extended 2026-07-29).** `LoopRunner.apply_config(cm)`
 (`packages/controller/src/controller/runtime.py`) rebuilds `params`,
-`battery`, `derate`, `pcc_base_kw`/`max_feed_kw`, `droop`, `pfc`, and
-`modes.hold_max_s` from `cm` via the same builder functions used at startup,
-and swaps them into the running loop between cycles — option 1 below,
-implemented. `edge.state` (PI integral, last setpoint, derivative filter) and
-the current mode/HOLD timer are left untouched, so a reload carries state
-seamlessly rather than resetting it. Wired into both `PUT /config/assets` and
-`PUT /config/ems` in `http_api.py` via `_apply_to_running_loop`, which no-ops
-against the test-only `LoopHandle` stub (`getattr(loop, "apply_config", None)`)
-so nothing else changes. Regression tests:
-`tests/unit/test_runtime.py::test_apply_config_updates_tunables_without_resetting_state`
-and `tests/contract/test_http_api.py::test_put_ems_applies_to_a_running_loop`.
+`battery`, `derate`, `pcc_base_kw`/`max_feed_kw`, `droop`, `pfc`,
+`modes.hold_max_s`, and `pcc_setpoint_kw` from `cm` via the same builder
+functions used at startup, and swaps them into the running loop between
+cycles — option 1 below, implemented. `edge.state` (PI integral, last
+setpoint, derivative filter) and the current mode/HOLD timer are left
+untouched, so a reload carries state seamlessly rather than resetting it.
+Wired into both `PUT /config/assets` and `PUT /config/ems` in `http_api.py`
+via `_apply_to_running_loop`, which no-ops against the test-only `LoopHandle`
+stub (`getattr(loop, "apply_config", None)`) so nothing else changes.
+
+**Caveat (known, not yet resolved):** `pcc_setpoint_kw` has two live-update
+paths now — `PUT /config/ems` (via `apply_config`) and `POST /setpoint` (used
+by the external-EMS gateway, S1). Any `PUT /config/ems` resets the live
+setpoint to the file's value, *even if the PUT didn't touch that field* —
+so if a config PUT lands while the ext-ems gateway is actively driving the
+setpoint via `/setpoint`, the gateway's live value gets silently stomped back
+to the static file default. No "did this field actually change" tracking
+exists to prevent it. Low real-world likelihood (an operator tuning gains
+mid-takeover-scenario is an edge case) but worth knowing before relying on
+both paths simultaneously.
+
+Also validated live on the rig (2026-07-29): the containerized path
+(`docker-compose.rig.yml`) initially 500'd on any `PUT /config/ems` with
+`OSError: Read-only file system` — the `../configs:/app/configs` bind mount
+for `core`/`controller` was `:ro`, which predates hot-reload actually mattering
+(the old note here said "writes happen on PUT, which this loop never
+issues" — no longer true). Changed both mounts to `:rw` so the PUT can persist
+back to the host file.
+
+Regression tests:
+`tests/unit/test_runtime.py::test_apply_config_updates_tunables_without_resetting_state`,
+`test_apply_config_pcc_setpoint_overrides_a_live_post_setpoint_value` (pins the
+caveat above), and `tests/contract/test_http_api.py::test_put_ems_applies_to_a_running_loop`.
 The CHIL `config_reload` scenario strengthening (assert the `control` series
 actually responds to a new limit) is still open as a nice-to-have, not blocking.
 

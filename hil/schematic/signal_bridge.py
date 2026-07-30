@@ -348,7 +348,6 @@ class TyphoonSignalBridge:
         for label, arg, fn in candidates:
             try:
                 if fn() is not None:
-                    print(f"bridge: load slider read via {label}({arg!r})", flush=True)
                     return fn
                 errs.append(f"{label}({arg!r}): None")
             except Exception as e:  # noqa: BLE001

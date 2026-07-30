@@ -174,14 +174,46 @@ def test_apply_config_updates_tunables_without_resetting_state(
     assert integral_before != 0.0
 
     mutated = dict(edge_ems_config_raw)
-    mutated["controller"] = dict(mutated["controller"], Kp=0.9, Ki=0.4)
+    mutated["controller"] = dict(mutated["controller"], Kp=0.9, Ki=0.4, pcc_setpoint_kw=-42.0)
     cm.update(EMS, mutated)
     runner.apply_config(cm)
 
     assert runner._loop.edge.params.kp == 0.9
     assert runner._loop.edge.params.ki == 0.4
+    assert runner._loop.pcc_setpoint_kw == -42.0
     # rolling state must survive the reload untouched
     assert runner._loop.edge.state.integral == integral_before
+
+
+def test_apply_config_pcc_setpoint_overrides_a_live_post_setpoint_value(
+    dm, tmp_path, asset_config_raw, edge_ems_config_raw
+):
+    # Documents the known interaction (see apply_config's docstring): a config
+    # PUT resets the live PCC target from the file, even if it was most
+    # recently set live via POST /setpoint (e.g. the ext-ems gateway) and even
+    # though the PUT didn't touch pcc_setpoint_kw itself. Not the ideal end
+    # state for that interaction, just the current, honest behavior -- pinned
+    # here so changing it later is a deliberate decision, not a silent side
+    # effect discovered in the field.
+    cm = _cm_from_examples(dm, tmp_path, asset_config_raw, edge_ems_config_raw)
+    loop = build_control_loop(
+        cm, dm, read_snapshot=lambda now: _importing_snapshot(),
+        publish=lambda *a: True, write_control=None,
+    )
+    runner = LoopRunner(loop, period_s=1.0)
+    runner.set_pcc_setpoint_kw(-999.0)  # simulate the ext-ems gateway driving it live
+    assert runner.pcc_setpoint_kw == -999.0
+
+    # A PUT that only changes Kp -- pcc_setpoint_kw in the file is untouched --
+    # still resets the live setpoint back to the file's value on apply_config.
+    mutated = dict(edge_ems_config_raw)
+    mutated["controller"] = dict(mutated["controller"], Kp=0.9)
+    cm.update(EMS, mutated)
+    runner.apply_config(cm)
+
+    file_default = cm.ems_config.controller.pcc_setpoint_kw  # 0.0, example.yaml doesn't set it
+    assert runner.pcc_setpoint_kw == file_default
+    assert runner.pcc_setpoint_kw != -999.0
 
 
 def test_apply_config_noop_against_loop_handle_stub():

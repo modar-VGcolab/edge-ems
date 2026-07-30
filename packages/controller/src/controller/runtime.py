@@ -139,6 +139,16 @@ class LoopRunner:
         asset changes (added/removed) are refused earlier, at the HTTP layer
         (`_structural_change` -> 409) while the loop is running, so this only
         ever has to handle rating/limit/tuning changes on the existing assets.
+
+        Also applies `controller.pcc_setpoint_kw` from the file, for parity
+        with every other EMS-config field. CAUTION: this means any
+        `PUT /config/ems` -- even one that only touches `Kp` or `pfc` -- resets
+        the live PCC setpoint to whatever's on disk. That will stomp a setpoint
+        pushed live via `POST /setpoint` (the external-EMS gateway, S1) if a
+        config PUT lands while the gateway is actively following an external
+        EMS. There's no separate "did this field actually change" tracking
+        here, so the two live-setpoint paths (config PUT vs. POST /setpoint)
+        can race if both are in use against the same running loop at once.
         """
         ac, ec = cm.asset_config, cm.ems_config
         loop = self._loop
@@ -149,6 +159,7 @@ class LoopRunner:
         loop.droop = DroopController(ec.droop, loop.pcc_base_kw) if ec.droop.enabled else None
         loop.pfc = PfcController(ec.pfc) if ec.pfc.enabled else None
         loop.modes.hold_max_s = ec.controller.hold_max_s
+        loop.pcc_setpoint_kw = ec.controller.pcc_setpoint_kw
 
     def start(self) -> bool:
         if self.state == "running":

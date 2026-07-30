@@ -1,0 +1,140 @@
+{
+  "data_model_version": "0.1",
+  "influxdb": {
+    "url": "http://influxdb:8086",
+    "org": "edge",
+    "bucket": "edge_ems",
+    "token": "${INFLUX_TOKEN}"
+  },
+  "mqtt": {
+    "broker_address": "mosquitto",
+    "broker_port": 1883,
+    "client_id": "edge-ems-controller",
+    "username": "",
+    "password": ""
+  },
+  "controller": {
+    "update_period": 1.0,
+    "Kp": 0.3,
+    "Ki": 0.2,
+    "Kd": 0.0,
+    "deriv_filter_tau": 0.0,
+    "pv_feedforward_gain": 0.0,
+    "timeout_period": 2.0,
+    "hold_max_s": 10.0,
+    "slew_limit_kw_s": 200.0,
+    "pcc_setpoint_kw": 0
+  },
+  "droop": {
+    "enabled": false,
+    "p_f_droop": {
+      "enabled": false,
+      "dP_f": [
+        -0.1,
+        -0.05,
+        0.05,
+        0.1
+      ],
+      "dQ_f": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "f": [
+        49.5,
+        49.8,
+        50.2,
+        50.5
+      ]
+    },
+    "q_v_droop": {
+      "enabled": false,
+      "dP_V": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "dQ_V": [
+        -0.1,
+        -0.05,
+        0.05,
+        0.1
+      ],
+      "V": [
+        207,
+        219,
+        241,
+        253
+      ]
+    }
+  },
+  "pfc": {
+    "enabled": false,
+    "q_sign_convention": 1,
+    "s_rated_kva": 500,
+    "default": {
+      "pf_target": 1.0,
+      "mode": "unity"
+    },
+    "windows": [
+      {
+        "start": "08:00",
+        "end": "20:00",
+        "pf_target": 0.95,
+        "mode": "lagging"
+      },
+      {
+        "start": "20:00",
+        "end": "08:00",
+        "pf_target": 0.98,
+        "mode": "leading"
+      }
+    ]
+  },
+  "asset_aggregation": {
+    "battery": {
+      "measurements": [
+        "soc_pct",
+        "active_power_kw",
+        "reactive_power_kvar",
+        "available_charge_power_kw",
+        "available_discharge_power_kw"
+      ],
+      "setpoint_type": "battery"
+    },
+    "pv": {
+      "measurements": [
+        "active_power_kw",
+        "reactive_power_kvar"
+      ],
+      "setpoint_type": "pv"
+    },
+    "flexible_load": {
+      "measurements": [
+        "active_power_kw",
+        "reactive_power_kvar"
+      ],
+      "setpoint_type": "load"
+    },
+    "pcc": {
+      "measurements": [
+        "voltage_v",
+        "frequency_hz",
+        "current_a",
+        "active_power_kw",
+        "reactive_power_kvar"
+      ],
+      "setpoint_type": "pcc"
+    }
+  },
+  "http_api": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "debug": false
+  },
+  "logging": {
+    "level": "INFO"
+  }
+}
